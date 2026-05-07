@@ -63,7 +63,7 @@
   <div class="section-head">
     <div>
       <h2>数据备份</h2>
-      <p>导出文件包含系统配置、Token、List 和去重记录，请妥善保存。</p>
+      <p>导出文件包含系统配置、Token、List、用户备注和去重记录，请妥善保存。</p>
     </div>
   </div>
   <div class="panel backup-grid">
@@ -76,7 +76,7 @@
     </div>
     <form method="post" action="/data/import" enctype="multipart/form-data">
       <h3>导入数据</h3>
-      <p class="muted">会覆盖 Token、List、系统配置和去重记录，但保留当前后台登录账号密码。</p>
+      <p class="muted">会覆盖 Token、List、用户备注、系统配置和去重记录，但保留当前后台登录账号密码。</p>
       <label>备份文件
         <input name="backup_file" type="file" accept="application/json,.json" required>
       </label>
@@ -87,6 +87,39 @@
         <button type="submit" class="danger">导入并覆盖</button>
       </div>
     </form>
+  </div>
+</section>
+
+<section class="band" id="aliases">
+  <div class="section-head">
+    <div>
+      <h2>用户备注</h2>
+      <p>填写用户名和备注；命中该用户发帖时，TG 推送会显示“备注 @用户名”。</p>
+    </div>
+  </div>
+  <form class="panel alias-form" method="post" action="/aliases">
+    <label>用户名
+      <input name="username" required placeholder="@username 或 username">
+    </label>
+    <label>备注
+      <input name="note" required placeholder="例如：客户A / 重点账号 / 项目方">
+    </label>
+    <div class="actions">
+      <button type="submit">保存备注</button>
+    </div>
+  </form>
+  <div class="panel alias-list">
+    {% for alias in aliases %}
+      <div class="alias-row">
+        <strong>{{ alias.note }}</strong>
+        <code>@{{ alias.username }}</code>
+        <form method="post" action="/aliases/{{ alias.id }}/delete">
+          <button type="submit" class="danger">删除</button>
+        </form>
+      </div>
+    {% else %}
+      <p class="muted">暂无用户备注。</p>
+    {% endfor %}
   </div>
 </section>
 

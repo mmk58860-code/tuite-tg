@@ -254,7 +254,8 @@ p {
 
 .settings-grid,
 .token-form,
-.backup-grid {
+.backup-grid,
+.alias-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
@@ -448,6 +449,23 @@ summary {
   margin-top: 12px;
 }
 
+.alias-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.alias-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(140px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  background: #f7fcfc;
+  border: 1px solid #e1f0f0;
+  border-radius: 8px;
+}
+
 .row {
   display: grid;
   grid-template-columns: minmax(120px, 1fr) minmax(180px, 1fr) 80px auto auto;
@@ -537,6 +555,8 @@ summary {
   .settings-grid,
   .token-form,
   .backup-grid,
+  .alias-form,
+  .alias-row,
   .list-form,
   .row,
   .log {

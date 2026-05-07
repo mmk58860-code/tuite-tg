@@ -19,6 +19,7 @@ from .database import (
     SeenItem,
     Setting,
     TokenInstance,
+    UserAlias,
     WatchList,
     add_log,
     get_db,
@@ -77,6 +78,13 @@ SEEN_EXPORT_FIELDS = [
     "link",
     "created_at",
     "forwarded_at",
+]
+USER_ALIAS_EXPORT_FIELDS = [
+    "id",
+    "username",
+    "note",
+    "created_at",
+    "updated_at",
 ]
 PROTECTED_IMPORT_SETTINGS = {"admin_username", "admin_password_hash"}
 templates.env.filters["beijing_time"] = lambda value: format_beijing_time(value)
@@ -154,6 +162,7 @@ async def index(
         return RedirectResponse("/login", status_code=303)
     tokens = db.query(TokenInstance).order_by(TokenInstance.id.asc()).all()
     lists = db.query(WatchList).order_by(WatchList.token_id.asc(), WatchList.id.asc()).all()
+    aliases = db.query(UserAlias).order_by(UserAlias.username.asc()).all()
     logs = db.query(Log).order_by(Log.id.desc()).limit(120).all()
     settings = {
         "telegram_bot_token": get_setting(db, "telegram_bot_token", ""),
@@ -184,6 +193,7 @@ async def index(
             "logs": logs,
             "settings": settings,
             "stats": stats,
+            "aliases": aliases,
         },
     )
 
@@ -279,6 +289,10 @@ async def export_data(
             serialize_row(item, SEEN_EXPORT_FIELDS)
             for item in db.query(SeenItem).order_by(SeenItem.id.asc()).all()
         ],
+        "user_aliases": [
+            serialize_row(item, USER_ALIAS_EXPORT_FIELDS)
+            for item in db.query(UserAlias).order_by(UserAlias.id.asc()).all()
+        ],
     }
     filename = f"tuite-tg-backup-{beijing_now().strftime('%Y%m%d%H%M%S')}.json"
     return Response(
@@ -312,6 +326,7 @@ async def import_data(
         db.query(SeenItem).delete()
         db.query(WatchList).delete()
         db.query(TokenInstance).delete()
+        db.query(UserAlias).delete()
 
         for item in payload.get("settings", []):
             key = str(item.get("key", "")).strip()
@@ -327,11 +342,50 @@ async def import_data(
         for item in payload.get("seen_items", []):
             db.add(SeenItem(**clean_payload(item, SEEN_EXPORT_FIELDS)))
 
-        add_log(db, "INFO", "数据导入完成，已覆盖 Token、List、系统配置和去重记录")
+        for item in payload.get("user_aliases", []):
+            db.add(UserAlias(**clean_payload(item, USER_ALIAS_EXPORT_FIELDS)))
+
+        add_log(db, "INFO", "数据导入完成，已覆盖 Token、List、用户备注、系统配置和去重记录")
     except Exception as exc:
         db.rollback()
         add_log(db, "ERROR", f"导入失败：{exc}")
     return RedirectResponse("/", status_code=303)
+
+
+@app.post("/aliases")
+async def save_alias(
+    username: str = Form(...),
+    note: str = Form(...),
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    clean_username = normalize_username(username)
+    clean_note = note.strip()
+    if not clean_username or not clean_note:
+        add_log(db, "ERROR", "用户备注保存失败：用户名和备注都不能为空")
+        return RedirectResponse("/#aliases", status_code=303)
+    now = utc_now()
+    alias = db.query(UserAlias).filter(UserAlias.username == clean_username).first()
+    if alias:
+        alias.note = clean_note
+        alias.updated_at = now
+    else:
+        db.add(UserAlias(username=clean_username, note=clean_note, created_at=now, updated_at=now))
+    add_log(db, "INFO", f"用户备注已保存: @{clean_username} -> {clean_note}")
+    return RedirectResponse("/#aliases", status_code=303)
+
+
+@app.post("/aliases/{alias_id}/delete")
+async def delete_alias(
+    alias_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    alias = db.query(UserAlias).filter(UserAlias.id == alias_id).first()
+    if alias:
+        db.delete(alias)
+        add_log(db, "INFO", f"用户备注已删除: @{alias.username}")
+    return RedirectResponse("/#aliases", status_code=303)
 
 
 @app.post("/tokens")
@@ -515,6 +569,23 @@ def extract_list_id(value: str) -> str:
         return match.group(1)
     match = re.search(r"(\d{5,})", value)
     return match.group(1) if match else value
+
+
+def normalize_username(value: str) -> str:
+    value = value.strip()
+    value = value.removeprefix("@")
+    value = value.rstrip("/")
+    if "/" in value:
+        parts = [part for part in value.split("/") if part]
+        for marker in ("x.com", "twitter.com"):
+            if marker in parts:
+                index = parts.index(marker)
+                if len(parts) > index + 1:
+                    value = parts[index + 1]
+                    break
+        else:
+            value = parts[-1] if parts else value
+    return value.lower()
 
 
 def serialize_row(row: object, fields: list[str]) -> dict[str, object]:

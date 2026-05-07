@@ -231,5 +231,6 @@ def normalize_web_tweet(item: dict) -> Optional[dict]:
         "id": str(tweet_id),
         "title": f"{name} (@{username}): {text[:160]}",
         "link": f"https://x.com/{quote(username)}/status/{tweet_id}" if username else f"https://x.com/i/web/status/{tweet_id}",
+        "username": username,
         "text": text,
     }

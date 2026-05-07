@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from .database import (
     SeenItem,
     TokenInstance,
+    UserAlias,
     WatchList,
     add_log,
     get_setting,
@@ -128,6 +129,8 @@ class Watcher:
             candidate_ids = candidate_item_ids(item)
             title = item.get("title", "")
             link = item.get("link", "")
+            username = normalize_username(str(item.get("username") or extract_username_from_item(item)))
+            author_label = resolve_author_label(username)
             with session_scope() as db:
                 exists = db.query(SeenItem).filter(SeenItem.item_id.in_(candidate_ids)).first()
                 if exists:
@@ -146,11 +149,12 @@ class Watcher:
                     continue
                 add_log(db, "INFO", f"发现新 item: {item_id}")
 
-            message = format_feed_item(title, link, watch_list["name"] or watch_list["list_id"])
+            message = format_feed_item(title, link, watch_list["name"] or watch_list["list_id"], author_label)
             try:
                 await send_telegram(bot_token, chat_id, message)
                 if apprise_urls:
-                    send_apprise(apprise_urls, "X List 更新", f"{title}\n{link}")
+                    prefix = f"{author_label}\n" if author_label else ""
+                    send_apprise(apprise_urls, "X List 更新", f"{prefix}{title}\n{link}")
             except Exception as exc:
                 with session_scope() as db:
                     add_log(db, "ERROR", f"推送 item 失败 {item_id}: {exc}")
@@ -231,6 +235,7 @@ async def fetch_rss_items(token: dict, watch_list: dict) -> list[dict]:
                 "id": entry.get("id") or entry.get("guid") or entry.get("link"),
                 "title": entry.get("title", ""),
                 "link": entry.get("link", ""),
+                "username": extract_username_from_entry(entry),
             }
         )
     return entries
@@ -379,6 +384,56 @@ def snapshot_list(watch_list: WatchList) -> dict:
         "name": watch_list.name,
         "list_id": watch_list.list_id,
     }
+
+
+def resolve_author_label(username: str) -> str:
+    if not username:
+        return ""
+    with session_scope() as db:
+        alias = db.query(UserAlias).filter(UserAlias.username == username).first()
+        if alias:
+            return f"{alias.note} @{username}"
+    return ""
+
+
+def normalize_username(value: str) -> str:
+    value = value.strip().removeprefix("@").lower()
+    return value
+
+
+def extract_username_from_entry(entry) -> str:
+    for key in ("author", "authors"):
+        value = entry.get(key)
+        if isinstance(value, str):
+            username = extract_username_from_text(value)
+            if username:
+                return username
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    username = extract_username_from_text(str(item.get("name") or item.get("href") or ""))
+                    if username:
+                        return username
+    return extract_username_from_item(
+        {
+            "title": entry.get("title", ""),
+            "link": entry.get("link", ""),
+            "id": entry.get("id") or entry.get("guid") or "",
+        }
+    )
+
+
+def extract_username_from_item(item: dict) -> str:
+    for value in (str(item.get("link") or ""), str(item.get("id") or "")):
+        match = re.search(r"(?:x|twitter)\.com/([^/?#]+)/status/\d+", value)
+        if match and match.group(1).lower() not in {"i", "intent"}:
+            return normalize_username(match.group(1))
+    return extract_username_from_text(str(item.get("title") or ""))
+
+
+def extract_username_from_text(value: str) -> str:
+    match = re.search(r"@([A-Za-z0-9_]{1,20})", value)
+    return normalize_username(match.group(1)) if match else ""
 
 
 def stable_id(link: str, title: str) -> str:

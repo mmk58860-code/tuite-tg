@@ -89,6 +89,16 @@ class SeenItem(Base):
     forwarded_at = Column(DateTime(timezone=True), nullable=True)
 
 
+class UserAlias(Base):
+    __tablename__ = "user_aliases"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(120), unique=True, nullable=False, index=True)
+    note = Column(String(200), nullable=False, default="")
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
 class Setting(Base):
     __tablename__ = "settings"
 

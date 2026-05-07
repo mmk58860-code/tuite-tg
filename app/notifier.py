@@ -46,13 +46,15 @@ def format_alert(title: str, body: str, detail: Optional[str] = None) -> str:
     return message
 
 
-def format_feed_item(title: str, link: str, source: str = "") -> str:
+def format_feed_item(title: str, link: str, source: str = "", author_label: str = "") -> str:
     heading = "X List 更新"
     if source:
         heading += f" - {source}"
     safe_link = html.escape(link)
+    author_line = f"{html.escape(author_label)}\n" if author_label else ""
     return (
         f"<b>{html.escape(heading)}</b>\n"
+        f"{author_line}"
         f"{html.escape(title)}\n\n"
         f"<a href=\"{safe_link}\">打开原文</a>"
     )

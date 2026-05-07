@@ -41,10 +41,10 @@ ask_required() {
 ask_password() {
   local first second
   while true; do
-    read -r -s -p "请输入后台登录密码（至少 8 位）: " first
+    read -r -s -p "请输入后台登录密码: " first
     printf '\n'
-    if (( ${#first} < 8 )); then
-      say_error "密码太短，请至少输入 8 位。"
+    if [[ -z "$first" ]]; then
+      say_error "密码不能为空，请重新输入。"
       continue
     fi
     read -r -s -p "请再次输入后台登录密码: " second
@@ -137,13 +137,10 @@ done
 WEB_USERNAME="$(ask_required "请输入后台登录账号" "admin")"
 WEB_PASSWORD="$(ask_password)"
 TUITE_TG_SECRET_KEY="$(generate_secret)"
-GLOBAL_POLL_SECONDS="$(ask "请输入全局轮询秒数" "5")"
-FAILURE_COOLDOWN_MINUTES="$(ask "请输入失败冷却分钟" "10")"
-
-say ""
-say "Telegram 通知可以先留空，启动后也能在网页后台修改。"
-TELEGRAM_BOT_TOKEN="$(ask "请输入 Telegram Bot Token（可留空）" "")"
-TELEGRAM_CHAT_ID="$(ask "请输入 Telegram Chat ID（可留空）" "")"
+GLOBAL_POLL_SECONDS="5"
+FAILURE_COOLDOWN_MINUTES="10"
+TELEGRAM_BOT_TOKEN=""
+TELEGRAM_CHAT_ID=""
 APPRISE_URLS=""
 
 write_env ".env"

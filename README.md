@@ -41,10 +41,8 @@ chmod +x scripts/install.sh
 - 网页访问端口
 - 后台登录账号
 - 后台登录密码
-- 全局轮询秒数
-- 失败冷却分钟
-- Telegram Bot Token（可留空，启动后可在网页后台修改）
-- Telegram Chat ID（可留空，启动后可在网页后台修改）
+
+Telegram、全局轮询秒数、失败冷却分钟等配置可以启动后在网页后台修改。
 
 安装完成后打开：
 

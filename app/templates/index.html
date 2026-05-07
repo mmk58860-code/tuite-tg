@@ -33,6 +33,37 @@
 <section class="band">
   <div class="section-head">
     <div>
+      <h1>数据备份</h1>
+      <p>导出文件包含系统配置、Token、List 和去重记录，请妥善保存。</p>
+    </div>
+  </div>
+  <div class="panel backup-grid">
+    <div>
+      <h2>导出数据</h2>
+      <p class="muted">用于换服务器或恢复配置，文件里会包含敏感 token 信息。</p>
+      <div class="actions">
+        <a class="button-link" href="/data/export">导出备份</a>
+      </div>
+    </div>
+    <form method="post" action="/data/import" enctype="multipart/form-data">
+      <h2>导入数据</h2>
+      <p class="muted">会覆盖 Token、List、系统配置和去重记录，但保留当前后台登录账号密码。</p>
+      <label>备份文件
+        <input name="backup_file" type="file" accept="application/json,.json" required>
+      </label>
+      <label>确认导入
+        <input name="confirm_text" placeholder="输入 导入 后执行覆盖" required>
+      </label>
+      <div class="actions">
+        <button type="submit" class="danger">导入并覆盖</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<section class="band">
+  <div class="section-head">
+    <div>
       <h1>新增 Token 实例</h1>
       <p>推荐每个 RSSHub 容器对应一个 token 和一个代理，端口绑定到 127.0.0.1。</p>
     </div>

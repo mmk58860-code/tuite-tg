@@ -98,7 +98,8 @@ p {
 }
 
 .settings-grid,
-.token-form {
+.token-form,
+.backup-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
@@ -143,7 +144,24 @@ button {
   cursor: pointer;
 }
 
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  border-radius: 6px;
+  padding: 8px 13px;
+  background: var(--brand);
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+}
+
 button:hover {
+  background: var(--brand-dark);
+}
+
+.button-link:hover {
   background: var(--brand-dark);
 }
 
@@ -305,6 +323,7 @@ summary {
 
   .settings-grid,
   .token-form,
+  .backup-grid,
   .list-form,
   .row,
   .log {

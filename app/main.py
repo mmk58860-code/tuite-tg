@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -15,6 +16,8 @@ from sqlalchemy.orm import Session
 from . import auth
 from .database import (
     Log,
+    SeenItem,
+    Setting,
     TokenInstance,
     WatchList,
     add_log,
@@ -33,6 +36,48 @@ load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+
+TOKEN_EXPORT_FIELDS = [
+    "id",
+    "name",
+    "rsshub_url",
+    "auth_token",
+    "ct0",
+    "bearer_token",
+    "proxy_url",
+    "enabled",
+    "healthy",
+    "use_fallback",
+    "graphql_query_id",
+    "last_error",
+    "last_checked_at",
+    "last_success_at",
+    "last_alerted_at",
+    "last_repaired_at",
+    "cooldown_until",
+    "created_at",
+    "updated_at",
+]
+LIST_EXPORT_FIELDS = [
+    "id",
+    "token_id",
+    "name",
+    "list_id",
+    "enabled",
+    "subscription_checked_at",
+    "subscription_error",
+    "created_at",
+]
+SEEN_EXPORT_FIELDS = [
+    "item_id",
+    "list_id",
+    "token_id",
+    "title",
+    "link",
+    "created_at",
+    "forwarded_at",
+]
+PROTECTED_IMPORT_SETTINGS = {"admin_username", "admin_password_hash"}
 
 
 @asynccontextmanager
@@ -193,6 +238,86 @@ async def test_telegram(
         add_log(db, "INFO", "Telegram 测试消息发送成功")
     except Exception as exc:
         add_log(db, "ERROR", f"Telegram 测试失败: {exc}")
+    return RedirectResponse("/", status_code=303)
+
+
+@app.get("/data/export")
+async def export_data(
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    payload = {
+        "schema_version": 1,
+        "app": "tuite-tg",
+        "exported_at": utc_now().isoformat(),
+        "settings": [
+            {"key": item.key, "value": item.value}
+            for item in db.query(Setting).order_by(Setting.key.asc()).all()
+        ],
+        "token_instances": [
+            serialize_row(item, TOKEN_EXPORT_FIELDS)
+            for item in db.query(TokenInstance).order_by(TokenInstance.id.asc()).all()
+        ],
+        "watch_lists": [
+            serialize_row(item, LIST_EXPORT_FIELDS)
+            for item in db.query(WatchList).order_by(WatchList.id.asc()).all()
+        ],
+        "seen_items": [
+            serialize_row(item, SEEN_EXPORT_FIELDS)
+            for item in db.query(SeenItem).order_by(SeenItem.id.asc()).all()
+        ],
+    }
+    filename = f"tuite-tg-backup-{utc_now().strftime('%Y%m%d%H%M%S')}.json"
+    return Response(
+        content=json.dumps(payload, ensure_ascii=False, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/data/import")
+async def import_data(
+    backup_file: UploadFile = File(...),
+    confirm_text: str = Form(""),
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    if confirm_text.strip() != "导入":
+        add_log(db, "ERROR", "导入取消：确认文字不正确")
+        return RedirectResponse("/", status_code=303)
+
+    try:
+        raw = await backup_file.read()
+        payload = json.loads(raw.decode("utf-8-sig"))
+        if payload.get("app") != "tuite-tg":
+            raise ValueError("不是 Tuite TG 备份文件")
+    except Exception as exc:
+        add_log(db, "ERROR", f"导入失败：备份文件无法读取 ({exc})")
+        return RedirectResponse("/", status_code=303)
+
+    try:
+        db.query(SeenItem).delete()
+        db.query(WatchList).delete()
+        db.query(TokenInstance).delete()
+
+        for item in payload.get("settings", []):
+            key = str(item.get("key", "")).strip()
+            if key and key not in PROTECTED_IMPORT_SETTINGS:
+                set_setting(db, key, str(item.get("value", "")))
+
+        for item in payload.get("token_instances", []):
+            db.add(TokenInstance(**clean_payload(item, TOKEN_EXPORT_FIELDS)))
+
+        for item in payload.get("watch_lists", []):
+            db.add(WatchList(**clean_payload(item, LIST_EXPORT_FIELDS)))
+
+        for item in payload.get("seen_items", []):
+            db.add(SeenItem(**clean_payload(item, SEEN_EXPORT_FIELDS)))
+
+        add_log(db, "INFO", "数据导入完成，已覆盖 Token、List、系统配置和去重记录")
+    except Exception as exc:
+        db.rollback()
+        add_log(db, "ERROR", f"导入失败：{exc}")
     return RedirectResponse("/", status_code=303)
 
 
@@ -377,3 +502,33 @@ def extract_list_id(value: str) -> str:
         return match.group(1)
     match = re.search(r"(\d{5,})", value)
     return match.group(1) if match else value
+
+
+def serialize_row(row: object, fields: list[str]) -> dict[str, object]:
+    data: dict[str, object] = {}
+    for field in fields:
+        value = getattr(row, field)
+        data[field] = value.isoformat() if isinstance(value, datetime) else value
+    return data
+
+
+def clean_payload(item: dict[str, object], fields: list[str]) -> dict[str, object]:
+    data: dict[str, object] = {}
+    for field in fields:
+        if field not in item:
+            continue
+        value = item[field]
+        if field.endswith("_at") or field == "cooldown_until":
+            value = parse_datetime(value)
+        data[field] = value
+    return data
+
+
+def parse_datetime(value: object) -> datetime | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return None

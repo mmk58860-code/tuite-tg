@@ -58,6 +58,13 @@ docker compose logs -f tuite-tg
 docker compose down
 ```
 
+重置后台账号密码：
+
+```bash
+chmod +x scripts/reset-admin.sh
+./scripts/reset-admin.sh
+```
+
 > 注意：第一次启动时，后台账号密码会写入 `data/tuite_tg.db`。如果后面只改 `.env` 里的 `WEB_PASSWORD`，不会自动修改已有数据库里的登录密码。需要重置时可以停止服务并删除数据库后重新运行安装向导。
 
 ```bash

@@ -116,8 +116,8 @@
           <code>{{ token.rsshub_url }}</code>
         </p>
         <p>
-          最后检查：{{ token.last_checked_at or '暂无' }}
-          · 最后成功：{{ token.last_success_at or '暂无' }}
+          最后检查：{{ token.last_checked_at | beijing_time }}
+          · 最后成功：{{ token.last_success_at | beijing_time }}
         </p>
         {% if token.graphql_query_id %}
           <p>GraphQL ID: <code>{{ token.graphql_query_id }}</code></p>
@@ -218,7 +218,7 @@
   <div class="panel logs">
     {% for log in logs %}
       <div class="log {{ log.level | lower }}">
-        <time>{{ log.created_at }}</time>
+        <time>{{ log.created_at | beijing_time }}</time>
         <strong>{{ log.level }}</strong>
         <span>{{ log.message }}</span>
       </div>

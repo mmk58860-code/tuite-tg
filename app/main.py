@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
@@ -36,6 +36,7 @@ load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+BEIJING_TZ = timezone(timedelta(hours=8), "Asia/Shanghai")
 
 TOKEN_EXPORT_FIELDS = [
     "id",
@@ -78,6 +79,7 @@ SEEN_EXPORT_FIELDS = [
     "forwarded_at",
 ]
 PROTECTED_IMPORT_SETTINGS = {"admin_username", "admin_password_hash"}
+templates.env.filters["beijing_time"] = lambda value: format_beijing_time(value)
 
 
 @asynccontextmanager
@@ -249,7 +251,7 @@ async def export_data(
     payload = {
         "schema_version": 1,
         "app": "tuite-tg",
-        "exported_at": utc_now().isoformat(),
+        "exported_at": beijing_now().isoformat(),
         "settings": [
             {"key": item.key, "value": item.value}
             for item in db.query(Setting).order_by(Setting.key.asc()).all()
@@ -267,7 +269,7 @@ async def export_data(
             for item in db.query(SeenItem).order_by(SeenItem.id.asc()).all()
         ],
     }
-    filename = f"tuite-tg-backup-{utc_now().strftime('%Y%m%d%H%M%S')}.json"
+    filename = f"tuite-tg-backup-{beijing_now().strftime('%Y%m%d%H%M%S')}.json"
     return Response(
         content=json.dumps(payload, ensure_ascii=False, indent=2),
         media_type="application/json",
@@ -532,3 +534,19 @@ def parse_datetime(value: object) -> datetime | None:
     if isinstance(value, str):
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     return None
+
+
+def beijing_now() -> datetime:
+    return utc_now().astimezone(BEIJING_TZ)
+
+
+def format_beijing_time(value: object) -> str:
+    if not value:
+        return "暂无"
+    if isinstance(value, str):
+        value = parse_datetime(value)
+    if not isinstance(value, datetime):
+        return str(value)
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(BEIJING_TZ).strftime("%Y-%m-%d %H:%M:%S 北京时间")

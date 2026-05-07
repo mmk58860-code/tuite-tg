@@ -12,40 +12,67 @@
 - 自动用新 query id 进行 fallback 抓取测试。
 - fallback 成功或失败后继续发送 Telegram 结果通知。
 
-## 快速启动
+## Ubuntu 一键安装
 
-Windows 开发运行：
+```bash
+sudo apt update
+sudo apt install -y git curl ca-certificates
+```
+
+如果服务器还没有 Docker，请先安装 Docker：
+
+```bash
+curl -fsSL https://get.docker.com | sudo sh
+```
+
+下载并运行中文安装向导：
+
+```bash
+cd /opt
+sudo git clone https://github.com/mmk58860-code/tuite-tg.git
+sudo chown -R $USER:$USER /opt/tuite-tg
+cd /opt/tuite-tg
+chmod +x scripts/install.sh
+./scripts/install.sh
+```
+
+安装向导会要求输入：
+
+- 网页访问端口
+- 后台登录账号
+- 后台登录密码
+- 全局轮询秒数
+- 失败冷却分钟
+- Telegram Bot Token（可留空，启动后可在网页后台修改）
+- Telegram Chat ID（可留空，启动后可在网页后台修改）
+
+安装完成后打开：
+
+```text
+http://服务器IP:你输入的端口
+```
+
+常用命令：
+
+```bash
+docker compose ps
+docker compose logs -f tuite-tg
+docker compose down
+```
+
+> 注意：第一次启动时，后台账号密码会写入 `data/tuite_tg.db`。如果后面只改 `.env` 里的 `WEB_PASSWORD`，不会自动修改已有数据库里的登录密码。需要重置时可以停止服务并删除数据库后重新运行安装向导。
+
+```bash
+docker compose down
+rm -f data/tuite_tg.db
+./scripts/install.sh
+```
+
+## Windows 开发运行
 
 ```powershell
 cd C:\Users\Administrator\Desktop\tuite-tg
 .\scripts\run-dev.ps1
-```
-
-Docker 运行：
-
-```bash
-cp .env.example .env
-docker compose up -d --build
-```
-
-默认后台：
-
-```text
-http://服务器IP:8000
-账号：admin
-密码：admin12345
-```
-
-上线前请修改 `.env`：
-
-```env
-WEB_USERNAME=admin
-WEB_PASSWORD=换成强密码
-TUITE_TG_SECRET_KEY=随机长字符串
-TELEGRAM_BOT_TOKEN=你的TG机器人token
-TELEGRAM_CHAT_ID=你的chat id
-GLOBAL_POLL_SECONDS=5
-FAILURE_COOLDOWN_MINUTES=10
 ```
 
 ## RSSHub 实例建议

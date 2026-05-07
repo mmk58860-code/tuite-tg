@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tuite TG</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <strong>Tuite TG</strong>
+        <span>RSSHub 多 Token 调度后台</span>
+      </div>
+      <nav>
+        <form method="post" action="/monitor/trigger">
+          <button type="submit" class="secondary">手动轮询</button>
+        </form>
+        <form method="post" action="/logout">
+          <button type="submit" class="ghost">退出</button>
+        </form>
+      </nav>
+    </header>
+    <main class="shell">
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>

@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="band">
+  <div class="section-head">
+    <div>
+      <h1>系统配置</h1>
+      <p>全局轮询建议 5 秒；每个 token 轮流执行，10 个 token 时单号约 50 秒一次。</p>
+    </div>
+  </div>
+  <form class="panel settings-grid" method="post" action="/settings">
+    <label>Telegram Bot Token
+      <input name="telegram_bot_token" value="{{ settings.telegram_bot_token }}" autocomplete="off">
+    </label>
+    <label>Telegram Chat ID
+      <input name="telegram_chat_id" value="{{ settings.telegram_chat_id }}">
+    </label>
+    <label>全局轮询秒数
+      <input name="global_poll_seconds" type="number" min="1" value="{{ settings.global_poll_seconds }}">
+    </label>
+    <label>失败冷却分钟
+      <input name="failure_cooldown_minutes" type="number" min="1" value="{{ settings.failure_cooldown_minutes }}">
+    </label>
+    <label class="span-2">Apprise URLs
+      <textarea name="apprise_urls" rows="3" placeholder="json://host/path 或 tgram://...">{{ settings.apprise_urls }}</textarea>
+    </label>
+    <div class="actions span-2">
+      <button type="submit">保存配置</button>
+      <button type="submit" class="secondary" formaction="/settings/test-telegram">测试 TG</button>
+    </div>
+  </form>
+</section>
+
+<section class="band">
+  <div class="section-head">
+    <div>
+      <h1>新增 Token 实例</h1>
+      <p>推荐每个 RSSHub 容器对应一个 token 和一个代理，端口绑定到 127.0.0.1。</p>
+    </div>
+  </div>
+  <form class="panel token-form" method="post" action="/tokens">
+    <label>名称
+      <input name="name" required placeholder="token-1">
+    </label>
+    <label>RSSHub 地址
+      <input name="rsshub_url" required placeholder="http://127.0.0.1:1201">
+    </label>
+    <label>代理
+      <input name="proxy_url" placeholder="socks5://127.0.0.1:1080">
+    </label>
+    <label class="check">
+      <input name="enabled" type="checkbox" checked>
+      <span>启用</span>
+    </label>
+    <label>auth_token
+      <input name="auth_token" autocomplete="off">
+    </label>
+    <label>ct0
+      <input name="ct0" autocomplete="off">
+    </label>
+    <label class="span-2">Bearer Token
+      <input name="bearer_token" autocomplete="off" placeholder="可选；fallback 抓取时优先使用">
+    </label>
+    <div class="actions span-2">
+      <button type="submit">添加实例</button>
+    </div>
+  </form>
+</section>
+
+<section class="band">
+  <div class="section-head">
+    <div>
+      <h1>Token 与 List</h1>
+      <p>RSSHub 失败时会先 TG 报警，然后尝试自动发现 GraphQL ID 并切到 fallback。</p>
+    </div>
+  </div>
+  {% for token in tokens %}
+  <article class="token-card">
+    <div class="token-head">
+      <div>
+        <h2>{{ token.name }}</h2>
+        <p>
+          <span class="badge {{ 'ok' if token.healthy else 'bad' }}">{{ '健康' if token.healthy else '异常' }}</span>
+          <span class="badge {{ 'ok' if token.enabled else 'muted' }}">{{ '启用' if token.enabled else '停用' }}</span>
+          <span class="badge {{ 'warn' if token.use_fallback else 'muted' }}">{{ 'fallback' if token.use_fallback else 'rsshub' }}</span>
+          <code>{{ token.rsshub_url }}</code>
+        </p>
+        {% if token.graphql_query_id %}
+          <p>GraphQL ID: <code>{{ token.graphql_query_id }}</code></p>
+        {% endif %}
+        {% if token.last_error %}
+          <p class="error-text">{{ token.last_error }}</p>
+        {% endif %}
+      </div>
+      <div class="actions">
+        <form method="post" action="/tokens/{{ token.id }}/repair">
+          <button class="secondary" type="submit">手动修复</button>
+        </form>
+        <form method="post" action="/tokens/{{ token.id }}/fallback">
+          <button class="secondary" type="submit">切换抓取</button>
+        </form>
+        <form method="post" action="/tokens/{{ token.id }}/delete">
+          <button class="danger" type="submit">删除</button>
+        </form>
+      </div>
+    </div>
+
+    <details>
+      <summary>编辑实例</summary>
+      <form class="token-form edit-form" method="post" action="/tokens">
+        <input type="hidden" name="token_id" value="{{ token.id }}">
+        <label>名称
+          <input name="name" value="{{ token.name }}" required>
+        </label>
+        <label>RSSHub 地址
+          <input name="rsshub_url" value="{{ token.rsshub_url }}" required>
+        </label>
+        <label>代理
+          <input name="proxy_url" value="{{ token.proxy_url }}">
+        </label>
+        <label class="check">
+          <input name="enabled" type="checkbox" {% if token.enabled %}checked{% endif %}>
+          <span>启用</span>
+        </label>
+        <label>auth_token
+          <input name="auth_token" placeholder="留空保持原值" autocomplete="off">
+        </label>
+        <label>ct0
+          <input name="ct0" placeholder="留空保持原值" autocomplete="off">
+        </label>
+        <label class="span-2">Bearer Token
+          <input name="bearer_token" placeholder="留空保持原值" autocomplete="off">
+        </label>
+        <div class="actions span-2">
+          <button type="submit">保存修改</button>
+        </div>
+      </form>
+    </details>
+
+    <div class="list-box">
+      <form class="list-form" method="post" action="/tokens/{{ token.id }}/lists">
+        <input name="name" placeholder="列表备注">
+        <input name="list_id" placeholder="List URL 或 ID" required>
+        <button type="submit">添加 List</button>
+      </form>
+      <div class="table">
+        {% for item in list_map.get(token.id, []) %}
+          <div class="row">
+            <span>{{ item.name or '未命名' }}</span>
+            <code>{{ item.list_id }}</code>
+            <span>{{ '启用' if item.enabled else '停用' }}</span>
+            <form method="post" action="/lists/{{ item.id }}/toggle">
+              <button type="submit" class="secondary">{{ '停用' if item.enabled else '启用' }}</button>
+            </form>
+            <form method="post" action="/lists/{{ item.id }}/delete">
+              <button type="submit" class="danger">删除</button>
+            </form>
+          </div>
+        {% else %}
+          <p class="muted">暂无 List。</p>
+        {% endfor %}
+      </div>
+    </div>
+  </article>
+  {% else %}
+    <div class="panel muted">暂无 token 实例。</div>
+  {% endfor %}
+</section>
+
+<section class="band">
+  <div class="section-head">
+    <div>
+      <h1>运行日志</h1>
+      <p>显示最近 120 条事件，包括 RSSHub 异常、GraphQL 修复结果和推送状态。</p>
+    </div>
+  </div>
+  <div class="panel logs">
+    {% for log in logs %}
+      <div class="log {{ log.level | lower }}">
+        <time>{{ log.created_at }}</time>
+        <strong>{{ log.level }}</strong>
+        <span>{{ log.message }}</span>
+      </div>
+    {% else %}
+      <p class="muted">暂无日志。</p>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

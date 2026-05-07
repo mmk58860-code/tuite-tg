@@ -162,6 +162,16 @@ async def index(
         "global_poll_seconds": get_setting(db, "global_poll_seconds", "5"),
         "failure_cooldown_minutes": get_setting(db, "failure_cooldown_minutes", "10"),
     }
+    last_checked = max((token.last_checked_at for token in tokens if token.last_checked_at), default=None)
+    stats = {
+        "total_tokens": len(tokens),
+        "enabled_tokens": sum(1 for token in tokens if token.enabled),
+        "healthy_tokens": sum(1 for token in tokens if token.healthy and token.enabled),
+        "total_lists": len(lists),
+        "enabled_lists": sum(1 for item in lists if item.enabled),
+        "last_checked_at": last_checked,
+        "telegram_ready": bool(settings["telegram_bot_token"] and settings["telegram_chat_id"]),
+    }
     list_map: dict[int, list[WatchList]] = {}
     for item in lists:
         list_map.setdefault(item.token_id, []).append(item)
@@ -173,6 +183,7 @@ async def index(
             "list_map": list_map,
             "logs": logs,
             "settings": settings,
+            "stats": stats,
         },
     )
 

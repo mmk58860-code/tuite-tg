@@ -7,22 +7,54 @@
     <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
   </head>
   <body>
-    <header class="topbar">
-      <div>
-        <strong>Tuite TG</strong>
-        <span>RSSHub 多 Token 调度后台</span>
-      </div>
-      <nav>
-        <form method="post" action="/monitor/trigger">
-          <button type="submit" class="secondary">手动轮询</button>
-        </form>
-        <form method="post" action="/logout">
-          <button type="submit" class="ghost">退出</button>
-        </form>
-      </nav>
-    </header>
-    <main class="shell">
-      {% block content %}{% endblock %}
-    </main>
+    <div class="app-layout">
+      <aside class="sidebar">
+        <div class="brand-block">
+          <div class="brand-mark">TG</div>
+          <div>
+            <strong>Tuite TG</strong>
+            <span>RSSHub Monitor</span>
+          </div>
+        </div>
+
+        <nav class="side-nav" aria-label="主菜单">
+          <a class="active" href="#dashboard"><span>▣</span>运行看板</a>
+          <a href="#tokens"><span>◎</span>Token 实例</a>
+          <a href="#settings"><span>⚙</span>系统设置</a>
+          <a href="#backup"><span>⇅</span>数据备份</a>
+          <a href="#logs"><span>☷</span>运行日志</a>
+        </nav>
+
+        <div class="side-footer">
+          <span>系统状态</span>
+          <strong><i></i> 已连接</strong>
+          <form method="post" action="/logout">
+            <button type="submit" class="link-danger">退出登录</button>
+          </form>
+        </div>
+      </aside>
+
+      <main class="main-area">
+        <header class="page-top">
+          <div>
+            <h1>{% block page_title %}系统运行看板{% endblock %}</h1>
+            <p>{% block page_subtitle %}多 Token 轮询、健康检测与 Telegram 推送后台{% endblock %}</p>
+          </div>
+          <nav class="top-actions">
+            <form method="post" action="/monitor/trigger">
+              <button type="submit" class="secondary">手动轮询</button>
+            </form>
+            <a class="button-link" href="/data/export">导出数据</a>
+            <a class="button-link subtle" href="#backup">导入数据</a>
+            <form method="post" action="/logout">
+              <button type="submit" class="ghost">退出</button>
+            </form>
+          </nav>
+        </header>
+        <div class="content-shell">
+          {% block content %}{% endblock %}
+        </div>
+      </main>
+    </div>
   </body>
 </html>

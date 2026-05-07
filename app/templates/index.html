@@ -1,9 +1,38 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="band">
+<section class="band" id="dashboard">
+  <div class="metric-grid">
+    <article class="metric-card">
+      <span>Token 状态</span>
+      <strong class="{{ 'ok-text' if stats.enabled_tokens == stats.healthy_tokens else 'warn-text' }}">
+        {{ stats.healthy_tokens }} / {{ stats.enabled_tokens }} 正常
+      </strong>
+      <p>总 Token：{{ stats.total_tokens }}</p>
+    </article>
+    <article class="metric-card">
+      <span>最近扫描</span>
+      <strong>{{ stats.last_checked_at | beijing_time }}</strong>
+      <p>手动轮询会立即执行下一个队列项</p>
+    </article>
+    <article class="metric-card">
+      <span>Telegram</span>
+      <strong class="{{ 'ok-text' if stats.telegram_ready else 'warn-text' }}">
+        {{ '已配置' if stats.telegram_ready else '配置不完整' }}
+      </strong>
+      <p>{{ '可以发送通知' if stats.telegram_ready else '请填写 Bot Token 和 Chat ID' }}</p>
+    </article>
+    <article class="metric-card">
+      <span>List 监控</span>
+      <strong>{{ stats.enabled_lists }} / {{ stats.total_lists }}</strong>
+      <p>启用中的列表数量</p>
+    </article>
+  </div>
+</section>
+
+<section class="band" id="settings">
   <div class="section-head">
     <div>
-      <h1>系统配置</h1>
+      <h2>系统设置</h2>
       <p>全局轮询建议 5 秒；每个 token 轮流执行，10 个 token 时单号约 50 秒一次。</p>
     </div>
   </div>
@@ -30,23 +59,23 @@
   </form>
 </section>
 
-<section class="band">
+<section class="band" id="backup">
   <div class="section-head">
     <div>
-      <h1>数据备份</h1>
+      <h2>数据备份</h2>
       <p>导出文件包含系统配置、Token、List 和去重记录，请妥善保存。</p>
     </div>
   </div>
   <div class="panel backup-grid">
     <div>
-      <h2>导出数据</h2>
+      <h3>导出数据</h3>
       <p class="muted">用于换服务器或恢复配置，文件里会包含敏感 token 信息。</p>
       <div class="actions">
         <a class="button-link" href="/data/export">导出备份</a>
       </div>
     </div>
     <form method="post" action="/data/import" enctype="multipart/form-data">
-      <h2>导入数据</h2>
+      <h3>导入数据</h3>
       <p class="muted">会覆盖 Token、List、系统配置和去重记录，但保留当前后台登录账号密码。</p>
       <label>备份文件
         <input name="backup_file" type="file" accept="application/json,.json" required>
@@ -61,10 +90,10 @@
   </div>
 </section>
 
-<section class="band">
+<section class="band" id="tokens">
   <div class="section-head">
     <div>
-      <h1>新增 Token 实例</h1>
+      <h2>新增 Token 实例</h2>
       <p>推荐每个 RSSHub 容器对应一个 token 和一个代理，端口绑定到 127.0.0.1。</p>
     </div>
   </div>
@@ -100,7 +129,7 @@
 <section class="band">
   <div class="section-head">
     <div>
-      <h1>Token 与 List</h1>
+      <h2>Token 与 List</h2>
       <p>RSSHub 失败时会先 TG 报警，然后尝试自动发现 GraphQL ID 并切到 fallback。</p>
     </div>
   </div>
@@ -108,7 +137,7 @@
   <article class="token-card">
     <div class="token-head">
       <div>
-        <h2>{{ token.name }}</h2>
+        <h3>{{ token.name }}</h3>
         <p>
           <span class="badge {{ 'ok' if token.healthy else 'bad' }}">{{ '健康' if token.healthy else '异常' }}</span>
           <span class="badge {{ 'ok' if token.enabled else 'muted' }}">{{ '启用' if token.enabled else '停用' }}</span>
@@ -208,10 +237,10 @@
   {% endfor %}
 </section>
 
-<section class="band">
+<section class="band" id="logs">
   <div class="section-head">
     <div>
-      <h1>运行日志</h1>
+      <h2>运行日志</h2>
       <p>显示最近 120 条事件，包括 RSSHub 异常、GraphQL 修复结果和推送状态。</p>
     </div>
   </div>

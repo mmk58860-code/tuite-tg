@@ -7,6 +7,10 @@ say() {
   printf '%s\n' "$1"
 }
 
+say_error() {
+  printf '%s\n' "$1" >&2
+}
+
 ask() {
   local prompt="$1"
   local default_value="${2:-}"
@@ -30,7 +34,7 @@ ask_required() {
       printf '%s' "$value"
       return
     fi
-    say "不能为空，请重新输入。"
+    say_error "不能为空，请重新输入。"
   done
 }
 
@@ -40,7 +44,7 @@ ask_password() {
     read -r -s -p "请输入后台登录密码（至少 8 位）: " first
     printf '\n'
     if (( ${#first} < 8 )); then
-      say "密码太短，请至少输入 8 位。"
+      say_error "密码太短，请至少输入 8 位。"
       continue
     fi
     read -r -s -p "请再次输入后台登录密码: " second
@@ -49,7 +53,7 @@ ask_password() {
       printf '%s' "$first"
       return
     fi
-    say "两次密码不一致，请重新输入。"
+    say_error "两次密码不一致，请重新输入。"
   done
 }
 
@@ -127,7 +131,7 @@ while true; do
   if validate_port "$WEB_PORT"; then
     break
   fi
-  say "端口号必须是 1-65535 之间的数字。"
+  say_error "端口号必须是 1-65535 之间的数字。"
 done
 
 WEB_USERNAME="$(ask_required "请输入后台登录账号" "admin")"

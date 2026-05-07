@@ -148,6 +148,13 @@
             <span>{{ item.name or '未命名' }}</span>
             <code>{{ item.list_id }}</code>
             <span>{{ '启用' if item.enabled else '停用' }}</span>
+            <span>
+              {% if item.subscription_checked_at %}
+                {{ '关注已确认' if not item.subscription_error else '关注检查失败' }}
+              {% else %}
+                待关注检查
+              {% endif %}
+            </span>
             <form method="post" action="/lists/{{ item.id }}/toggle">
               <button type="submit" class="secondary">{{ '停用' if item.enabled else '启用' }}</button>
             </form>

@@ -94,6 +94,7 @@ class Watcher:
                 return
             token_snapshot = snapshot_token(token)
             list_snapshot = snapshot_list(watch_list)
+            should_check_subscription = watch_list.subscription_checked_at is None
             bootstrap = (
                 db.query(SeenItem)
                 .filter(SeenItem.token_id == token.id, SeenItem.list_id == watch_list.list_id)
@@ -102,6 +103,8 @@ class Watcher:
             )
 
         try:
+            if should_check_subscription:
+                await ensure_list_subscription(token_snapshot, list_snapshot)
             if token_snapshot["use_fallback"]:
                 items = await fetch_fallback_items(token_snapshot, list_snapshot)
             else:
@@ -238,6 +241,45 @@ async def fetch_fallback_items(token: dict, watch_list: dict) -> list[dict]:
     )
     try:
         return await client.fetch_list_tweets(watch_list["list_id"], token["graphql_query_id"], count=10)
+    finally:
+        await client.close()
+
+
+async def ensure_list_subscription(token: dict, watch_list: dict) -> None:
+    if not token["auth_token"] or not token["ct0"]:
+        detail = "未填写 auth_token 或 ct0，跳过自动关注 List。"
+        with session_scope() as db:
+            row = db.query(WatchList).filter(WatchList.id == watch_list["id"]).first()
+            if row:
+                row.subscription_checked_at = utc_now()
+                row.subscription_error = detail
+            add_log(db, "WARNING", f"{token['name']} / {watch_list['list_id']}: {detail}")
+        return
+
+    client = GraphqlRepairClient(
+        TwitterAccount(
+            auth_token=token["auth_token"],
+            ct0=token["ct0"],
+            bearer_token=token["bearer_token"],
+            proxy_url=token["proxy_url"],
+        )
+    )
+    try:
+        query_id = await client.subscribe_list(watch_list["list_id"])
+        with session_scope() as db:
+            row = db.query(WatchList).filter(WatchList.id == watch_list["id"]).first()
+            if row:
+                row.subscription_checked_at = utc_now()
+                row.subscription_error = ""
+            add_log(db, "INFO", f"{token['name']} / {watch_list['list_id']} 已确认或自动关注 List，query_id={query_id}")
+    except (GraphqlRepairError, httpx.HTTPError, RuntimeError) as exc:
+        detail = str(exc)[:1000]
+        with session_scope() as db:
+            row = db.query(WatchList).filter(WatchList.id == watch_list["id"]).first()
+            if row:
+                row.subscription_checked_at = utc_now()
+                row.subscription_error = detail
+            add_log(db, "WARNING", f"{token['name']} / {watch_list['list_id']} 自动关注 List 失败，将继续尝试抓取: {detail}")
     finally:
         await client.close()
 

@@ -215,6 +215,10 @@ async def save_token(
         token = db.query(TokenInstance).filter(TokenInstance.id == int(token_id)).first()
         if not token:
             raise HTTPException(status_code=404, detail="Token not found")
+        old_auth_token = token.auth_token
+        old_ct0 = token.ct0
+        old_bearer_token = token.bearer_token
+        old_proxy_url = token.proxy_url
         token.name = name.strip()
         token.rsshub_url = rsshub_url.strip()
         if auth_token.strip():
@@ -226,6 +230,18 @@ async def save_token(
         token.proxy_url = proxy_url.strip()
         token.enabled = is_enabled
         token.updated_at = now
+        if (
+            token.auth_token != old_auth_token
+            or token.ct0 != old_ct0
+            or token.bearer_token != old_bearer_token
+            or token.proxy_url != old_proxy_url
+        ):
+            db.query(WatchList).filter(WatchList.token_id == token.id).update(
+                {
+                    "subscription_checked_at": None,
+                    "subscription_error": "",
+                }
+            )
     else:
         token = TokenInstance(
             name=name.strip(),
@@ -309,6 +325,8 @@ async def save_list(
     if old:
         old.name = name.strip()
         old.enabled = True
+        old.subscription_checked_at = None
+        old.subscription_error = ""
     else:
         db.add(WatchList(token_id=token_id, name=name.strip(), list_id=value, enabled=True))
     add_log(db, "INFO", f"List 已保存: {value}")

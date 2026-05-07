@@ -127,6 +127,42 @@ class GraphqlRepairClient:
             raise GraphqlRepairError(f"fallback 请求失败: {resp.status_code} {resp.text[:300]}")
         return extract_tweets(resp.json())
 
+    async def subscribe_list(self, list_id: str) -> str:
+        if not self.account.auth_token:
+            raise GraphqlRepairError("自动关注 List 需要 auth_token")
+        if not self.account.ct0:
+            raise GraphqlRepairError("自动关注 List 需要 ct0")
+
+        query_id = await self.discover_query_id("ListSubscribe")
+        bearer = self.account.bearer_token or await self.discover_web_bearer()
+        headers = {
+            "Authorization": f"Bearer {bearer}",
+            "Cookie": f"auth_token={self.account.auth_token}; ct0={self.account.ct0}",
+            "X-Csrf-Token": self.account.ct0,
+            "X-Twitter-Active-User": "yes",
+            "X-Twitter-Auth-Type": "OAuth2Session",
+            "Referer": f"https://x.com/i/lists/{list_id}",
+        }
+        payload = {
+            "variables": {"listId": str(list_id)},
+            "features": {
+                "responsive_web_graphql_exclude_directive_enabled": True,
+                "verified_phone_label_enabled": False,
+                "responsive_web_graphql_timeline_navigation_enabled": True,
+            },
+        }
+        resp = await self.client.post(
+            f"https://x.com/i/api/graphql/{query_id}/ListSubscribe",
+            headers=headers,
+            json=payload,
+        )
+        if resp.status_code >= 400:
+            raise GraphqlRepairError(f"自动关注 List 失败: {resp.status_code} {resp.text[:300]}")
+        body = resp.text[:300]
+        if '"errors"' in body:
+            raise GraphqlRepairError(f"自动关注 List 返回错误: {body}")
+        return query_id
+
 
 def find_graphql_query_id(source: str, operation: str) -> str:
     patterns = [

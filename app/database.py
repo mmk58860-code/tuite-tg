@@ -69,6 +69,8 @@ class WatchList(Base):
     name = Column(String(120), nullable=False, default="")
     list_id = Column(String(80), nullable=False)
     enabled = Column(Boolean, nullable=False, default=True)
+    subscription_checked_at = Column(DateTime(timezone=True), nullable=True)
+    subscription_error = Column(Text, nullable=False, default="")
     created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
 
 
@@ -103,6 +105,21 @@ class Log(Base):
 
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
+    ensure_schema_migrations()
+
+
+def ensure_schema_migrations() -> None:
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    with engine.begin() as conn:
+        columns = {
+            row[1]
+            for row in conn.exec_driver_sql("PRAGMA table_info(watch_lists)").fetchall()
+        }
+        if "subscription_checked_at" not in columns:
+            conn.exec_driver_sql("ALTER TABLE watch_lists ADD COLUMN subscription_checked_at DATETIME")
+        if "subscription_error" not in columns:
+            conn.exec_driver_sql("ALTER TABLE watch_lists ADD COLUMN subscription_error TEXT NOT NULL DEFAULT ''")
 
 
 def get_db() -> Iterator[Session]:

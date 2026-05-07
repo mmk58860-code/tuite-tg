@@ -7,7 +7,7 @@
       <strong class="{{ 'ok-text' if stats.enabled_tokens == stats.healthy_tokens else 'warn-text' }}">
         {{ stats.healthy_tokens }} / {{ stats.enabled_tokens }} 正常
       </strong>
-      <p>总 Token：{{ stats.total_tokens }}</p>
+      <p>总 Token：{{ stats.total_tokens }} · 未检测：{{ stats.unchecked_tokens }}</p>
     </article>
     <article class="metric-card">
       <span>最近扫描</span>
@@ -167,12 +167,16 @@
     </div>
   </div>
   {% for token in tokens %}
-  <article class="token-card">
+  <article class="token-card" id="token-{{ token.id }}">
     <div class="token-head">
       <div>
         <h3>{{ token.name }}</h3>
         <p>
-          <span class="badge {{ 'ok' if token.healthy else 'bad' }}">{{ '健康' if token.healthy else '异常' }}</span>
+          {% if not token.last_checked_at and not token.last_success_at and not token.last_error %}
+            <span class="badge muted">未检测</span>
+          {% else %}
+            <span class="badge {{ 'ok' if token.healthy else 'bad' }}">{{ '健康' if token.healthy else '异常' }}</span>
+          {% endif %}
           <span class="badge {{ 'ok' if token.enabled else 'muted' }}">{{ '启用' if token.enabled else '停用' }}</span>
           <span class="badge {{ 'warn' if token.use_fallback else 'muted' }}">{{ 'fallback' if token.use_fallback else 'rsshub' }}</span>
           <code>{{ token.rsshub_url }}</code>
@@ -189,6 +193,9 @@
         {% endif %}
       </div>
       <div class="actions">
+        <form method="post" action="/tokens/{{ token.id }}/check">
+          <button class="secondary" type="submit">手动检测</button>
+        </form>
         <form method="post" action="/tokens/{{ token.id }}/repair">
           <button class="secondary" type="submit">手动修复</button>
         </form>

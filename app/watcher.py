@@ -47,6 +47,10 @@ class Watcher:
         async with self._lock:
             await self.run_once()
 
+    async def check_pair(self, token_id: int, list_row_id: int) -> None:
+        async with self._lock:
+            await self.poll_pair(token_id, list_row_id)
+
     async def _loop(self) -> None:
         while not self._stopping.is_set():
             try:

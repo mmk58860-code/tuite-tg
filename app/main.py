@@ -175,7 +175,8 @@ async def index(
     stats = {
         "total_tokens": len(tokens),
         "enabled_tokens": sum(1 for token in tokens if token.enabled),
-        "healthy_tokens": sum(1 for token in tokens if token.healthy and token.enabled),
+        "healthy_tokens": sum(1 for token in tokens if token.healthy and token.enabled and token.last_success_at),
+        "unchecked_tokens": sum(1 for token in tokens if token.enabled and not token.last_checked_at and not token.last_success_at and not token.last_error),
         "total_lists": len(lists),
         "enabled_lists": sum(1 for item in lists if item.enabled),
         "last_checked_at": last_checked,
@@ -403,10 +404,12 @@ async def save_token(
 ):
     now = utc_now()
     is_enabled = enabled == "on"
+    redirect_url = "/#tokens"
     if token_id:
         token = db.query(TokenInstance).filter(TokenInstance.id == int(token_id)).first()
         if not token:
             raise HTTPException(status_code=404, detail="Token not found")
+        redirect_url = token_anchor(token.id)
         old_auth_token = token.auth_token
         old_ct0 = token.ct0
         old_bearer_token = token.bearer_token
@@ -446,7 +449,10 @@ async def save_token(
         )
         db.add(token)
     add_log(db, "INFO", f"Token 配置已保存: {name}")
-    return RedirectResponse("/", status_code=303)
+    if not token_id:
+        db.flush()
+        redirect_url = token_anchor(token.id)
+    return RedirectResponse(redirect_url, status_code=303)
 
 
 @app.post("/tokens/{token_id}/delete")
@@ -460,7 +466,30 @@ async def delete_token(
         db.query(WatchList).filter(WatchList.token_id == token_id).delete()
         db.delete(token)
         add_log(db, "INFO", f"Token 已删除: {token_id}")
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse("/#tokens", status_code=303)
+
+
+@app.post("/tokens/{token_id}/check")
+async def check_token(
+    token_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    token = db.query(TokenInstance).filter(TokenInstance.id == token_id).first()
+    watch_list = db.query(WatchList).filter(WatchList.token_id == token_id, WatchList.enabled.is_(True)).first()
+    if not token:
+        add_log(db, "ERROR", "手动检测失败：Token 不存在")
+        return RedirectResponse("/#tokens", status_code=303)
+    if not watch_list:
+        token.last_checked_at = utc_now()
+        token.healthy = False
+        token.last_error = "没有启用的 List，无法检测。"
+        token.updated_at = utc_now()
+        add_log(db, "ERROR", f"{token.name} 手动检测失败：没有启用的 List")
+        return RedirectResponse(token_anchor(token_id), status_code=303)
+
+    await watcher.check_pair(token_id, watch_list.id)
+    return RedirectResponse(token_anchor(token_id), status_code=303)
 
 
 @app.post("/tokens/{token_id}/repair")
@@ -473,7 +502,7 @@ async def repair_token(
     watch_list = db.query(WatchList).filter(WatchList.token_id == token_id, WatchList.enabled.is_(True)).first()
     if not token or not watch_list:
         add_log(db, "ERROR", "手动修复失败：Token 或启用的 List 不存在")
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse(token_anchor(token_id), status_code=303)
     token_snapshot = snapshot_token(token)
     list_snapshot = snapshot_list(watch_list)
     success, detail, query_id = await attempt_graphql_repair(token_snapshot, list_snapshot)
@@ -487,7 +516,7 @@ async def repair_token(
         token.healthy = False
         token.last_error = detail
     add_log(db, "INFO" if success else "ERROR", f"手动 GraphQL 修复结果: {detail}")
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse(token_anchor(token_id), status_code=303)
 
 
 @app.post("/tokens/{token_id}/fallback")
@@ -501,7 +530,7 @@ async def toggle_fallback(
         token.use_fallback = not token.use_fallback
         token.updated_at = utc_now()
         add_log(db, "INFO", f"{token.name} fallback 状态切换为 {token.use_fallback}")
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse(token_anchor(token_id), status_code=303)
 
 
 @app.post("/tokens/{token_id}/lists")
@@ -522,7 +551,7 @@ async def save_list(
     else:
         db.add(WatchList(token_id=token_id, name=name.strip(), list_id=value, enabled=True))
     add_log(db, "INFO", f"List 已保存: {value}")
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse(token_anchor(token_id), status_code=303)
 
 
 @app.post("/lists/{list_id}/toggle")
@@ -532,9 +561,11 @@ async def toggle_list(
     _: str = Depends(current_user_from_cookie),
 ):
     item = db.query(WatchList).filter(WatchList.id == list_id).first()
+    redirect_url = "/#tokens"
     if item:
         item.enabled = not item.enabled
-    return RedirectResponse("/", status_code=303)
+        redirect_url = token_anchor(item.token_id)
+    return RedirectResponse(redirect_url, status_code=303)
 
 
 @app.post("/lists/{list_id}/delete")
@@ -544,9 +575,11 @@ async def delete_list(
     _: str = Depends(current_user_from_cookie),
 ):
     item = db.query(WatchList).filter(WatchList.id == list_id).first()
+    redirect_url = "/#tokens"
     if item:
+        redirect_url = token_anchor(item.token_id)
         db.delete(item)
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse(redirect_url, status_code=303)
 
 
 @app.post("/monitor/trigger")
@@ -569,6 +602,10 @@ def extract_list_id(value: str) -> str:
         return match.group(1)
     match = re.search(r"(\d{5,})", value)
     return match.group(1) if match else value
+
+
+def token_anchor(token_id: int) -> str:
+    return f"/#token-{token_id}"
 
 
 def normalize_username(value: str) -> str:

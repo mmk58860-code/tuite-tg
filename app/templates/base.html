@@ -29,7 +29,7 @@
         <div class="side-footer">
           <span>系统状态</span>
           <strong><i></i> 已连接</strong>
-          <form method="post" action="/logout">
+          <form method="post" action="/logout" data-confirm="确认退出登录吗？">
             <button type="submit" class="link-danger">退出登录</button>
           </form>
         </div>
@@ -47,7 +47,7 @@
             </form>
             <a class="button-link" href="/data/export">导出数据</a>
             <a class="button-link subtle" href="#backup">导入数据</a>
-            <form method="post" action="/logout">
+            <form method="post" action="/logout" data-confirm="确认退出登录吗？">
               <button type="submit" class="ghost">退出</button>
             </form>
           </nav>
@@ -57,5 +57,17 @@
         </div>
       </main>
     </div>
+    <script>
+      document.addEventListener("submit", function (event) {
+        const form = event.target.closest("form[data-confirm]");
+        if (!form) {
+          return;
+        }
+        const message = form.dataset.confirm || "确认执行这个操作吗？";
+        if (!window.confirm(message)) {
+          event.preventDefault();
+        }
+      });
+    </script>
   </body>
 </html>

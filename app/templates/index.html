@@ -74,7 +74,7 @@
         <a class="button-link" href="/data/export">导出备份</a>
       </div>
     </div>
-    <form method="post" action="/data/import" enctype="multipart/form-data">
+    <form method="post" action="/data/import" enctype="multipart/form-data" data-confirm="确认导入并覆盖当前数据吗？Token、List、用户备注、系统配置和去重记录都会被替换。">
       <h3>导入数据</h3>
       <p class="muted">会覆盖 Token、List、用户备注、系统配置和去重记录，但保留当前后台登录账号密码。</p>
       <label>备份文件
@@ -113,7 +113,7 @@
       <div class="alias-row">
         <strong>{{ alias.note }}</strong>
         <code>@{{ alias.username }}</code>
-        <form method="post" action="/aliases/{{ alias.id }}/delete">
+        <form method="post" action="/aliases/{{ alias.id }}/delete" data-confirm="确认删除用户备注：{{ alias.note }} @{{ alias.username }} 吗？">
           <button type="submit" class="danger">删除</button>
         </form>
       </div>
@@ -196,13 +196,13 @@
         <form method="post" action="/tokens/{{ token.id }}/check">
           <button class="secondary" type="submit">手动检测</button>
         </form>
-        <form method="post" action="/tokens/{{ token.id }}/repair">
+        <form method="post" action="/tokens/{{ token.id }}/repair" data-confirm="确认对 {{ token.name }} 执行手动修复吗？">
           <button class="secondary" type="submit">手动修复</button>
         </form>
-        <form method="post" action="/tokens/{{ token.id }}/fallback">
+        <form method="post" action="/tokens/{{ token.id }}/fallback" data-confirm="确认切换 {{ token.name }} 的抓取方式吗？">
           <button class="secondary" type="submit">切换抓取</button>
         </form>
-        <form method="post" action="/tokens/{{ token.id }}/delete">
+        <form method="post" action="/tokens/{{ token.id }}/delete" data-confirm="确认删除 Token：{{ token.name }} 吗？该 Token 下的 List 也会删除。">
           <button class="danger" type="submit">删除</button>
         </form>
       </div>
@@ -259,10 +259,10 @@
                 待关注检查
               {% endif %}
             </span>
-            <form method="post" action="/lists/{{ item.id }}/toggle">
+            <form method="post" action="/lists/{{ item.id }}/toggle" data-confirm="确认{{ '停用' if item.enabled else '启用' }} List：{{ item.name or item.list_id }} 吗？">
               <button type="submit" class="secondary">{{ '停用' if item.enabled else '启用' }}</button>
             </form>
-            <form method="post" action="/lists/{{ item.id }}/delete">
+            <form method="post" action="/lists/{{ item.id }}/delete" data-confirm="确认删除 List：{{ item.name or item.list_id }} 吗？">
               <button type="submit" class="danger">删除</button>
             </form>
           </div>

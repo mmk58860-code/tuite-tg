@@ -84,6 +84,10 @@
           <span class="badge {{ 'warn' if token.use_fallback else 'muted' }}">{{ 'fallback' if token.use_fallback else 'rsshub' }}</span>
           <code>{{ token.rsshub_url }}</code>
         </p>
+        <p>
+          最后检查：{{ token.last_checked_at or '暂无' }}
+          · 最后成功：{{ token.last_success_at or '暂无' }}
+        </p>
         {% if token.graphql_query_id %}
           <p>GraphQL ID: <code>{{ token.graphql_query_id }}</code></p>
         {% endif %}

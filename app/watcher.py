@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import random
-from datetime import timedelta
+import re
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urljoin
 
@@ -110,14 +111,7 @@ class Watcher:
             else:
                 items = await fetch_rss_items(token_snapshot, list_snapshot)
             await self.process_items(token_snapshot, list_snapshot, items, bootstrap)
-            with session_scope() as db:
-                token = db.query(TokenInstance).filter(TokenInstance.id == token_id).first()
-                if token:
-                    token.healthy = True
-                    token.last_error = ""
-                    token.last_checked_at = utc_now()
-                    token.updated_at = utc_now()
-                add_log(db, "INFO", f"{token_snapshot['name']} / {list_snapshot['list_id']} 检查完成，返回 {len(items)} 条")
+            await mark_token_success(token_snapshot, list_snapshot, len(items))
         except Exception as exc:
             await self.handle_source_failure(token_snapshot, list_snapshot, str(exc))
 
@@ -130,11 +124,12 @@ class Watcher:
     ) -> None:
         bot_token, chat_id, apprise_urls = read_notify_settings()
         for item in reversed(items):
-            item_id = item.get("id") or stable_id(item.get("link", ""), item.get("title", ""))
+            item_id = normalize_item_id(item)
+            candidate_ids = candidate_item_ids(item)
             title = item.get("title", "")
             link = item.get("link", "")
             with session_scope() as db:
-                exists = db.query(SeenItem).filter(SeenItem.item_id == item_id).first()
+                exists = db.query(SeenItem).filter(SeenItem.item_id.in_(candidate_ids)).first()
                 if exists:
                     continue
                 seen = SeenItem(
@@ -164,15 +159,27 @@ class Watcher:
         bot_token, chat_id, _ = read_notify_settings()
         title = "X/RSSHub 抓取异常"
         body = f"{token['name']} / List {watch_list['list_id']} 抓取失败，准备自动发现 GraphQL ID 并尝试 fallback 修复。"
+        should_alert = True
         with session_scope() as db:
             row = db.query(TokenInstance).filter(TokenInstance.id == token["id"]).first()
             if row:
+                now = utc_now()
+                was_healthy = row.healthy
                 row.healthy = False
                 row.last_error = error[:2000]
-                row.last_checked_at = utc_now()
-                row.updated_at = utc_now()
+                row.last_checked_at = now
+                row.updated_at = now
+                alert_interval = timedelta(minutes=read_int_setting("failure_cooldown_minutes", 10))
+                should_alert = (
+                    was_healthy
+                    or row.last_alerted_at is None
+                    or elapsed_since(row.last_alerted_at, now) >= alert_interval
+                )
+                if should_alert:
+                    row.last_alerted_at = now
             add_log(db, "ERROR", f"{body} 原因: {error}")
-        await notify_safely(bot_token, chat_id, format_alert(title, body, error))
+        if should_alert:
+            await notify_safely(bot_token, chat_id, format_alert(title, body, error))
 
         success, detail, query_id = await attempt_graphql_repair(token, watch_list)
         with session_scope() as db:
@@ -185,6 +192,7 @@ class Watcher:
                     row.graphql_query_id = query_id
                     row.healthy = True
                     row.last_error = ""
+                    row.last_success_at = utc_now()
                     row.cooldown_until = None
                 else:
                     row.healthy = False
@@ -243,6 +251,28 @@ async def fetch_fallback_items(token: dict, watch_list: dict) -> list[dict]:
         return await client.fetch_list_tweets(watch_list["list_id"], token["graphql_query_id"], count=10)
     finally:
         await client.close()
+
+
+async def mark_token_success(token: dict, watch_list: dict, item_count: int) -> None:
+    bot_token, chat_id, _ = read_notify_settings()
+    recovered = False
+    with session_scope() as db:
+        row = db.query(TokenInstance).filter(TokenInstance.id == token["id"]).first()
+        if row:
+            recovered = not row.healthy or bool(row.last_error)
+            row.healthy = True
+            row.last_error = ""
+            row.last_checked_at = utc_now()
+            row.last_success_at = utc_now()
+            row.cooldown_until = None
+            row.updated_at = utc_now()
+        add_log(db, "INFO", f"{token['name']} / {watch_list['list_id']} 检查完成，返回 {item_count} 条")
+    if recovered:
+        await notify_safely(
+            bot_token,
+            chat_id,
+            format_alert("Token 抓取已恢复", f"{token['name']} / List {watch_list['list_id']} 已恢复正常。", f"本次返回 {item_count} 条，重复内容也视为抓取正常。"),
+        )
 
 
 async def ensure_list_subscription(token: dict, watch_list: dict) -> None:
@@ -354,6 +384,54 @@ def snapshot_list(watch_list: WatchList) -> dict:
 def stable_id(link: str, title: str) -> str:
     digest = hashlib.sha256(f"{link}\n{title}".encode("utf-8")).hexdigest()
     return f"feed:{digest}"
+
+
+def normalize_item_id(item: dict) -> str:
+    raw_id = str(item.get("id") or "")
+    link = str(item.get("link") or "")
+    title = str(item.get("title") or "")
+    for value in (raw_id, link):
+        tweet_id = extract_tweet_id(value)
+        if tweet_id:
+            return f"tweet:{tweet_id}"
+    if raw_id:
+        return raw_id if raw_id.startswith("tweet:") else f"item:{raw_id}"
+    return stable_id(link, title)
+
+
+def candidate_item_ids(item: dict) -> list[str]:
+    raw_id = str(item.get("id") or "")
+    link = str(item.get("link") or "")
+    title = str(item.get("title") or "")
+    ids = [normalize_item_id(item)]
+    if raw_id:
+        ids.append(raw_id)
+    if link:
+        ids.append(link)
+    ids.append(stable_id(link, title))
+    return list(dict.fromkeys(ids))
+
+
+def extract_tweet_id(value: str) -> str:
+    patterns = [
+        r"(?:twitter\.com|x\.com)/[^/\s]+/status/(\d+)",
+        r"/i/web/status/(\d+)",
+        r"(?:^|[:/_-])status[:/_-]?(\d{5,})",
+        r"^(\d{5,})$",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, value)
+        if match:
+            return match.group(1)
+    return ""
+
+
+def elapsed_since(then: datetime, now: datetime) -> timedelta:
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    return now - then
 
 
 watcher = Watcher()

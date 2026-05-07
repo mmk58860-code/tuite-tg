@@ -54,6 +54,8 @@ class TokenInstance(Base):
     graphql_query_id = Column(String(120), nullable=False, default="")
     last_error = Column(Text, nullable=False, default="")
     last_checked_at = Column(DateTime(timezone=True), nullable=True)
+    last_success_at = Column(DateTime(timezone=True), nullable=True)
+    last_alerted_at = Column(DateTime(timezone=True), nullable=True)
     last_repaired_at = Column(DateTime(timezone=True), nullable=True)
     cooldown_until = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
@@ -112,13 +114,22 @@ def ensure_schema_migrations() -> None:
     if not DATABASE_URL.startswith("sqlite"):
         return
     with engine.begin() as conn:
-        columns = {
+        token_columns = {
+            row[1]
+            for row in conn.exec_driver_sql("PRAGMA table_info(token_instances)").fetchall()
+        }
+        if "last_success_at" not in token_columns:
+            conn.exec_driver_sql("ALTER TABLE token_instances ADD COLUMN last_success_at DATETIME")
+        if "last_alerted_at" not in token_columns:
+            conn.exec_driver_sql("ALTER TABLE token_instances ADD COLUMN last_alerted_at DATETIME")
+
+        list_columns = {
             row[1]
             for row in conn.exec_driver_sql("PRAGMA table_info(watch_lists)").fetchall()
         }
-        if "subscription_checked_at" not in columns:
+        if "subscription_checked_at" not in list_columns:
             conn.exec_driver_sql("ALTER TABLE watch_lists ADD COLUMN subscription_checked_at DATETIME")
-        if "subscription_error" not in columns:
+        if "subscription_error" not in list_columns:
             conn.exec_driver_sql("ALTER TABLE watch_lists ADD COLUMN subscription_error TEXT NOT NULL DEFAULT ''")
 
 

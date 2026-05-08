@@ -180,7 +180,7 @@ body {
 }
 
 .content-shell {
-  width: min(1280px, calc(100% - 64px));
+  width: min(1320px, calc(100% - 64px));
   margin: 26px auto 64px;
 }
 
@@ -191,8 +191,8 @@ body {
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .metric-card,
@@ -206,8 +206,8 @@ body {
 }
 
 .metric-card {
-  min-height: 108px;
-  padding: 18px;
+  min-height: 100px;
+  padding: 16px;
 }
 
 .metric-card strong {
@@ -219,7 +219,7 @@ body {
 }
 
 .metric-card p {
-  margin: 9px 0 0;
+  margin: 8px 0 0;
 }
 
 .section-head {
@@ -382,6 +382,50 @@ button:hover,
   margin-bottom: 14px;
 }
 
+.add-panel {
+  margin-bottom: 14px;
+}
+
+.compact-details.panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.compact-details > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 16px;
+  list-style: none;
+}
+
+.compact-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.compact-details > summary::before {
+  content: "+";
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+  font-weight: 900;
+}
+
+.compact-details[open] > summary::before {
+  content: "-";
+}
+
+.compact-details > form {
+  margin: 0;
+  padding: 16px;
+  border-top: 1px solid var(--line);
+}
+
 .token-head {
   display: flex;
   align-items: flex-start;
@@ -485,11 +529,12 @@ summary {
 .rsshub-list {
   display: grid;
   gap: 10px;
+  margin-bottom: 14px;
 }
 
 .rsshub-row {
   display: grid;
-  grid-template-columns: minmax(170px, 1.2fr) minmax(150px, 0.9fr) minmax(90px, 0.6fr) auto;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(130px, 0.7fr) minmax(88px, 0.5fr) auto;
   gap: 12px;
   align-items: center;
   padding: 12px;
@@ -501,6 +546,7 @@ summary {
 .rsshub-row > div {
   display: grid;
   gap: 4px;
+  min-width: 0;
 }
 
 .rsshub-row > details {
@@ -511,6 +557,7 @@ summary {
 
 .rsshub-row code {
   width: fit-content;
+  max-width: 100%;
 }
 
 .rsshub-row span {
@@ -572,7 +619,7 @@ summary {
 
 @media (max-width: 1080px) {
   .metric-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 

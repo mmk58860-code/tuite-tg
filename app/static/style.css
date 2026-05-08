@@ -478,8 +478,38 @@ summary {
   border-radius: 8px;
 }
 
+.rsshub-list {
+  display: grid;
+  gap: 10px;
+}
+
 .rsshub-row {
-  grid-template-columns: minmax(110px, 0.8fr) minmax(180px, 1fr) minmax(170px, 1fr) 90px auto auto;
+  display: grid;
+  grid-template-columns: minmax(170px, 1.2fr) minmax(150px, 0.9fr) minmax(90px, 0.6fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  background: #f7fcfc;
+  border: 1px solid #e1f0f0;
+  border-radius: 8px;
+}
+
+.rsshub-row > div {
+  display: grid;
+  gap: 4px;
+}
+
+.rsshub-row code {
+  width: fit-content;
+}
+
+.rsshub-row span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.rsshub-row b {
+  font-size: 14px;
 }
 
 .logs {
@@ -564,6 +594,7 @@ summary {
   .alias-form,
   .alias-row,
   .list-form,
+  .rsshub-row,
   .row,
   .log {
     grid-template-columns: 1fr;

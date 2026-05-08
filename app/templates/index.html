@@ -105,29 +105,38 @@
       <button type="submit">新增 RSSHub</button>
     </div>
   </form>
-  <div class="panel table">
+  <div class="panel rsshub-list">
     {% for item in rsshub_instances %}
-      <div class="row rsshub-row">
-        <strong>{{ item.name }}</strong>
-        <code>{{ item.internal_url }}</code>
-        <span>宿主机 127.0.0.1:{{ item.host_port }}</span>
-        <span>{{ item.status }}</span>
-        {% if item.status == 'compose' %}
-          <span class="muted">内置服务</span>
-          <span class="muted">不可删除</span>
-        {% elif item.container_id %}
-          <form method="post" action="/rsshub/{{ item.id }}/refresh">
-            <button type="submit" class="secondary">刷新状态</button>
-          </form>
-          <form method="post" action="/rsshub/{{ item.id }}/delete" data-confirm="确认删除 RSSHub 容器：{{ item.name }} 吗？">
-            <button type="submit" class="danger">删除</button>
-          </form>
-        {% else %}
-          <span class="muted">未创建</span>
-          <form method="post" action="/rsshub/{{ item.id }}/delete" data-confirm="确认删除 RSSHub 记录：{{ item.name }} 吗？">
-            <button type="submit" class="danger">删除</button>
-          </form>
-        {% endif %}
+      <div class="rsshub-row">
+        <div>
+          <strong>{{ item.name }}</strong>
+          <code>{{ item.internal_url }}</code>
+        </div>
+        <div>
+          <span>宿主机端口</span>
+          <b>127.0.0.1:{{ item.host_port }}</b>
+        </div>
+        <div>
+          <span>状态</span>
+          <b>{{ item.status }}</b>
+        </div>
+        <div class="actions">
+          {% if item.status == 'compose' %}
+            <span class="muted">内置服务，不可删除</span>
+          {% elif item.container_id %}
+            <form method="post" action="/rsshub/{{ item.id }}/refresh">
+              <button type="submit" class="secondary">刷新状态</button>
+            </form>
+            <form method="post" action="/rsshub/{{ item.id }}/delete" data-confirm="确认删除 RSSHub 容器：{{ item.name }} 吗？">
+              <button type="submit" class="danger">删除</button>
+            </form>
+          {% else %}
+            <span class="muted">未创建</span>
+            <form method="post" action="/rsshub/{{ item.id }}/delete" data-confirm="确认删除 RSSHub 记录：{{ item.name }} 吗？">
+              <button type="submit" class="danger">删除</button>
+            </form>
+          {% endif %}
+        </div>
       </div>
     {% else %}
       <p class="muted">暂无记录。点击“查询当前 RSSHub 容器”可以扫描当前 Docker 里已有的 RSSHub。</p>

@@ -13,9 +13,8 @@ import httpx
 from sqlalchemy.orm import Session
 
 from .database import (
+    RsshubInstance,
     SeenItem,
-    TokenListState,
-    TokenInstance,
     UserAlias,
     WatchList,
     add_log,
@@ -23,7 +22,6 @@ from .database import (
     session_scope,
     utc_now,
 )
-from .graphql_repair import GraphqlRepairClient, GraphqlRepairError, TwitterAccount
 from .notifier import format_alert, format_feed_item, send_apprise, send_telegram
 
 
@@ -48,9 +46,12 @@ class Watcher:
         async with self._lock:
             await self.run_once()
 
-    async def check_pair(self, token_id: int, list_row_id: int) -> None:
+    async def check_list(self, list_row_id: int) -> None:
         async with self._lock:
-            await self.poll_pair(token_id, list_row_id)
+            await self.poll_list(list_row_id)
+
+    async def check_pair(self, token_id: int, list_row_id: int) -> None:
+        await self.check_list(list_row_id)
 
     async def _loop(self) -> None:
         while not self._stopping.is_set():
@@ -69,46 +70,40 @@ class Watcher:
 
     async def run_once(self) -> None:
         with session_scope() as db:
-            pair = self._next_pair(db)
-            if not pair:
+            list_row_id = self._next_list(db)
+            if not list_row_id:
                 return
-            token_id, list_id = pair
 
-        await self.poll_pair(token_id, list_id)
+        await self.poll_list(list_row_id)
 
-    def _next_pair(self, db: Session) -> Optional[tuple[int, int]]:
-        now = utc_now()
-        tokens = (
-            db.query(TokenInstance)
-            .filter(TokenInstance.enabled.is_(True))
-            .filter((TokenInstance.cooldown_until.is_(None)) | (TokenInstance.cooldown_until <= now))
-            .order_by(TokenInstance.id.asc())
-            .all()
-        )
+    def _next_list(self, db: Session) -> Optional[int]:
         lists = (
             db.query(WatchList)
             .filter(WatchList.token_id == 0, WatchList.enabled.is_(True))
             .order_by(WatchList.id.asc())
             .all()
         )
-        pairs = [(token.id, item.id) for item in lists for token in tokens]
-        if not pairs:
+        if not lists:
             return None
-        self._cursor = self._cursor % len(pairs)
-        token_id, list_row_id = pairs[self._cursor]
+        self._cursor = self._cursor % len(lists)
+        list_row_id = lists[self._cursor].id
         self._cursor += 1
-        return int(token_id), int(list_row_id)
+        return int(list_row_id)
 
     async def poll_pair(self, token_id: int, list_row_id: int) -> None:
+        await self.poll_list(list_row_id)
+
+    async def poll_list(self, list_row_id: int) -> None:
         with session_scope() as db:
-            token = db.query(TokenInstance).filter(TokenInstance.id == token_id).first()
             watch_list = db.query(WatchList).filter(WatchList.id == list_row_id, WatchList.token_id == 0).first()
-            if not token or not watch_list:
+            if not watch_list:
                 return
-            state = get_or_create_token_list_state(db, token.id, watch_list.id)
-            token_snapshot = snapshot_token(token)
+            rsshub = resolve_list_rsshub(db, watch_list)
+            if not rsshub:
+                mark_list_failure(db, watch_list, "没有可用的 RSSHub 容器，请先创建 RSSHub，或在 List 里选择 RSSHub。")
+                return
+            source_snapshot = snapshot_rsshub(rsshub)
             list_snapshot = snapshot_list(watch_list)
-            should_check_subscription = state.subscription_checked_at is None
             bootstrap = (
                 db.query(SeenItem)
                 .filter(SeenItem.list_id == watch_list.list_id)
@@ -117,16 +112,11 @@ class Watcher:
             )
 
         try:
-            if should_check_subscription:
-                await ensure_list_subscription(token_snapshot, list_snapshot)
-            if token_snapshot["use_fallback"]:
-                items = await fetch_fallback_items(token_snapshot, list_snapshot)
-            else:
-                items = await fetch_rss_items(token_snapshot, list_snapshot)
-            await self.process_items(token_snapshot, list_snapshot, items, bootstrap)
-            await mark_token_success(token_snapshot, list_snapshot, len(items))
+            items = await fetch_rss_items(source_snapshot, list_snapshot)
+            await self.process_items(source_snapshot, list_snapshot, items, bootstrap)
+            await mark_list_success(source_snapshot, list_snapshot, len(items))
         except Exception as exc:
-            await self.handle_source_failure(token_snapshot, list_snapshot, str(exc))
+            await self.handle_source_failure(source_snapshot, list_snapshot, str(exc))
 
     async def process_items(
         self,
@@ -178,17 +168,16 @@ class Watcher:
     async def handle_source_failure(self, token: dict, watch_list: dict, error: str) -> None:
         bot_token, chat_id, _ = read_notify_settings()
         title = "X/RSSHub 抓取异常"
-        body = f"{token['name']} / List {watch_list['list_id']} 抓取失败，准备自动发现 GraphQL ID 并尝试 fallback 修复。"
+        body = f"{token['name']} / List {watch_list['list_id']} 抓取失败。"
         should_alert = True
         with session_scope() as db:
-            row = db.query(TokenInstance).filter(TokenInstance.id == token["id"]).first()
+            row = db.query(WatchList).filter(WatchList.id == watch_list["id"]).first()
             if row:
                 now = utc_now()
                 was_healthy = row.healthy
                 row.healthy = False
                 row.last_error = error[:2000]
                 row.last_checked_at = now
-                row.updated_at = now
                 alert_interval = timedelta(minutes=read_int_setting("failure_cooldown_minutes", 10))
                 should_alert = (
                     was_healthy
@@ -200,38 +189,6 @@ class Watcher:
             add_log(db, "ERROR", f"{body} 原因: {error}")
         if should_alert:
             await notify_safely(bot_token, chat_id, format_alert(title, body, error))
-
-        success, detail, query_id = await attempt_graphql_repair(token, watch_list)
-        with session_scope() as db:
-            row = db.query(TokenInstance).filter(TokenInstance.id == token["id"]).first()
-            if row:
-                row.last_repaired_at = utc_now()
-                row.updated_at = utc_now()
-                if success:
-                    row.use_fallback = True
-                    row.graphql_query_id = query_id
-                    row.healthy = True
-                    row.last_error = ""
-                    row.last_success_at = utc_now()
-                    row.cooldown_until = None
-                else:
-                    row.healthy = False
-                    row.last_error = detail[:2000]
-                    row.cooldown_until = utc_now() + timedelta(minutes=read_int_setting("failure_cooldown_minutes", 10))
-            add_log(db, "INFO" if success else "ERROR", detail)
-
-        if success:
-            await notify_safely(
-                bot_token,
-                chat_id,
-                format_alert("GraphQL ID 自动修复成功", f"{token['name']} 已切换到 fallback 抓取。", f"query_id={query_id}\n{detail}"),
-            )
-        else:
-            await notify_safely(
-                bot_token,
-                chat_id,
-                format_alert("GraphQL ID 自动修复失败", f"{token['name']} 已进入冷却，等待人工处理或 RSSHub 更新。", detail),
-            )
 
 
 async def fetch_rss_items(token: dict, watch_list: dict) -> list[dict]:
@@ -257,92 +214,31 @@ async def fetch_rss_items(token: dict, watch_list: dict) -> list[dict]:
     return entries
 
 
-async def fetch_fallback_items(token: dict, watch_list: dict) -> list[dict]:
-    if not token["graphql_query_id"]:
-        raise RuntimeError("fallback 已启用但没有 graphql query id")
-    client = GraphqlRepairClient(
-        TwitterAccount(
-            auth_token=token["auth_token"],
-            ct0=token["ct0"],
-            bearer_token=token["bearer_token"],
-            proxy_url=token["proxy_url"],
-        )
-    )
-    try:
-        return await client.fetch_list_tweets(watch_list["list_id"], token["graphql_query_id"], count=10)
-    finally:
-        await client.close()
-
-
-async def mark_token_success(token: dict, watch_list: dict, item_count: int) -> None:
+async def mark_list_success(source: dict, watch_list: dict, item_count: int) -> None:
     bot_token, chat_id, _ = read_notify_settings()
     recovered = False
     with session_scope() as db:
-        row = db.query(TokenInstance).filter(TokenInstance.id == token["id"]).first()
+        row = db.query(WatchList).filter(WatchList.id == watch_list["id"]).first()
         if row:
             recovered = not row.healthy or bool(row.last_error)
             row.healthy = True
             row.last_error = ""
             row.last_checked_at = utc_now()
             row.last_success_at = utc_now()
-            row.cooldown_until = None
-            row.updated_at = utc_now()
-        add_log(db, "INFO", f"{token['name']} / {watch_list['list_id']} 检查完成，返回 {item_count} 条")
+        add_log(db, "INFO", f"{source['name']} / List {watch_list['list_id']} 检查完成，返回 {item_count} 条")
     if recovered:
         await notify_safely(
             bot_token,
             chat_id,
-            format_alert("Token 抓取已恢复", f"{token['name']} / List {watch_list['list_id']} 已恢复正常。", f"本次返回 {item_count} 条，重复内容也视为抓取正常。"),
+            format_alert("List 抓取已恢复", f"{source['name']} / List {watch_list['list_id']} 已恢复正常。", f"本次返回 {item_count} 条，重复内容也视为抓取正常。"),
         )
 
 
-async def ensure_list_subscription(token: dict, watch_list: dict) -> None:
-    if not token["auth_token"] or not token["ct0"]:
-        detail = "未填写 auth_token 或 ct0，跳过自动关注 List。"
-        with session_scope() as db:
-            mark_subscription_state(db, token["id"], watch_list["id"], detail)
-            add_log(db, "WARNING", f"{token['name']} / {watch_list['list_id']}: {detail}")
-        return
-
-    client = GraphqlRepairClient(
-        TwitterAccount(
-            auth_token=token["auth_token"],
-            ct0=token["ct0"],
-            bearer_token=token["bearer_token"],
-            proxy_url=token["proxy_url"],
-        )
-    )
-    try:
-        query_id = await client.subscribe_list(watch_list["list_id"])
-        with session_scope() as db:
-            mark_subscription_state(db, token["id"], watch_list["id"], "")
-            add_log(db, "INFO", f"{token['name']} / {watch_list['list_id']} 已确认或自动关注 List，query_id={query_id}")
-    except (GraphqlRepairError, httpx.HTTPError, RuntimeError) as exc:
-        detail = str(exc)[:1000]
-        with session_scope() as db:
-            mark_subscription_state(db, token["id"], watch_list["id"], detail)
-            add_log(db, "WARNING", f"{token['name']} / {watch_list['list_id']} 自动关注 List 失败，将继续尝试抓取: {detail}")
-    finally:
-        await client.close()
-
-
-async def attempt_graphql_repair(token: dict, watch_list: dict) -> tuple[bool, str, str]:
-    client = GraphqlRepairClient(
-        TwitterAccount(
-            auth_token=token["auth_token"],
-            ct0=token["ct0"],
-            bearer_token=token["bearer_token"],
-            proxy_url=token["proxy_url"],
-        )
-    )
-    try:
-        query_id = await client.discover_query_id("ListLatestTweetsTimeline")
-        tweets = await client.fetch_list_tweets(watch_list["list_id"], query_id, count=3)
-        return True, f"发现 query id {query_id}，fallback 测试返回 {len(tweets)} 条。", query_id
-    except (GraphqlRepairError, httpx.HTTPError, RuntimeError) as exc:
-        return False, str(exc), ""
-    finally:
-        await client.close()
+def mark_list_failure(db: Session, watch_list: WatchList, error: str) -> None:
+    watch_list.healthy = False
+    watch_list.last_error = error[:2000]
+    watch_list.last_checked_at = utc_now()
+    add_log(db, "ERROR", f"List {watch_list.list_id} 抓取失败: {error}")
 
 
 async def notify_safely(bot_token: str, chat_id: str, message: str) -> None:
@@ -371,17 +267,11 @@ def read_int_setting(key: str, default: int) -> int:
         return default
 
 
-def snapshot_token(token: TokenInstance) -> dict:
+def snapshot_rsshub(rsshub: RsshubInstance) -> dict:
     return {
-        "id": token.id,
-        "name": token.name,
-        "rsshub_url": token.rsshub_url,
-        "auth_token": token.auth_token,
-        "ct0": token.ct0,
-        "bearer_token": token.bearer_token,
-        "proxy_url": token.proxy_url,
-        "use_fallback": token.use_fallback,
-        "graphql_query_id": token.graphql_query_id,
+        "id": rsshub.id,
+        "name": rsshub.name,
+        "rsshub_url": rsshub.internal_url,
     }
 
 
@@ -390,33 +280,23 @@ def snapshot_list(watch_list: WatchList) -> dict:
         "id": watch_list.id,
         "name": watch_list.name,
         "list_id": watch_list.list_id,
+        "rsshub_instance_id": watch_list.rsshub_instance_id,
     }
 
 
-def get_or_create_token_list_state(db: Session, token_id: int, watch_list_id: int) -> TokenListState:
-    state = (
-        db.query(TokenListState)
-        .filter(TokenListState.token_id == token_id, TokenListState.watch_list_id == watch_list_id)
-        .first()
-    )
-    if state:
-        return state
-    state = TokenListState(token_id=token_id, watch_list_id=watch_list_id)
-    db.add(state)
-    db.flush()
-    return state
-
-
-def mark_subscription_state(db: Session, token_id: int, watch_list_id: int, error: str) -> None:
-    now = utc_now()
-    state = get_or_create_token_list_state(db, token_id, watch_list_id)
-    state.subscription_checked_at = now
-    state.subscription_error = error
-    state.updated_at = now
-    row = db.query(WatchList).filter(WatchList.id == watch_list_id).first()
-    if row:
-        row.subscription_checked_at = now
-        row.subscription_error = error
+def resolve_list_rsshub(db: Session, watch_list: WatchList) -> RsshubInstance | None:
+    if watch_list.rsshub_instance_id:
+        rsshub = (
+            db.query(RsshubInstance)
+            .filter(RsshubInstance.id == watch_list.rsshub_instance_id)
+            .first()
+        )
+        if rsshub:
+            return rsshub
+    rsshub = db.query(RsshubInstance).order_by(RsshubInstance.host_port.asc(), RsshubInstance.id.asc()).first()
+    if rsshub and watch_list.rsshub_instance_id != rsshub.id:
+        watch_list.rsshub_instance_id = rsshub.id
+    return rsshub
 
 
 def resolve_author_label(username: str) -> str:

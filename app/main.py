@@ -23,8 +23,6 @@ from .database import (
     RsshubInstance,
     SeenItem,
     Setting,
-    TokenListState,
-    TokenInstance,
     UserAlias,
     WatchList,
     add_log,
@@ -46,7 +44,7 @@ from .docker_manager import (
     remove_container,
 )
 from .notifier import format_alert, send_telegram
-from .watcher import attempt_graphql_repair, snapshot_list, snapshot_token, watcher
+from .watcher import watcher
 
 
 load_dotenv()
@@ -55,33 +53,18 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 BEIJING_TZ = timezone(timedelta(hours=8), "Asia/Shanghai")
 
-TOKEN_EXPORT_FIELDS = [
+LIST_EXPORT_FIELDS = [
     "id",
+    "token_id",
+    "rsshub_instance_id",
     "name",
-    "rsshub_url",
-    "auth_token",
-    "ct0",
-    "bearer_token",
-    "proxy_url",
+    "list_id",
     "enabled",
     "healthy",
-    "use_fallback",
-    "graphql_query_id",
     "last_error",
     "last_checked_at",
     "last_success_at",
     "last_alerted_at",
-    "last_repaired_at",
-    "cooldown_until",
-    "created_at",
-    "updated_at",
-]
-LIST_EXPORT_FIELDS = [
-    "id",
-    "token_id",
-    "name",
-    "list_id",
-    "enabled",
     "subscription_checked_at",
     "subscription_error",
     "created_at",
@@ -204,9 +187,10 @@ async def index(
         await current_user_from_cookie(request, db)
     except HTTPException:
         return RedirectResponse("/login", status_code=303)
-    tokens = db.query(TokenInstance).order_by(TokenInstance.id.asc()).all()
     lists = db.query(WatchList).filter(WatchList.token_id == 0).order_by(WatchList.id.asc()).all()
     rsshub_instances = db.query(RsshubInstance).order_by(RsshubInstance.host_port.asc()).all()
+    ensure_list_rsshub_bindings(db, lists, rsshub_instances)
+    rsshub_by_id = {item.id: item for item in rsshub_instances}
     proxies = db.query(ProxyProfile).order_by(ProxyProfile.id.asc()).all()
     aliases = db.query(UserAlias).order_by(UserAlias.username.asc()).all()
     logs = db.query(Log).order_by(Log.id.desc()).limit(120).all()
@@ -223,14 +207,13 @@ async def index(
         "global_poll_seconds": get_setting(db, "global_poll_seconds", "5"),
         "failure_cooldown_minutes": get_setting(db, "failure_cooldown_minutes", "10"),
     }
-    last_checked = max((token.last_checked_at for token in tokens if token.last_checked_at), default=None)
+    last_checked = max((item.last_checked_at for item in lists if item.last_checked_at), default=None)
+    enabled_lists = [item for item in lists if item.enabled]
     stats = {
-        "total_tokens": len(tokens),
-        "enabled_tokens": sum(1 for token in tokens if token.enabled),
-        "healthy_tokens": sum(1 for token in tokens if token.healthy and token.enabled and token.last_success_at),
-        "unchecked_tokens": sum(1 for token in tokens if token.enabled and not token.last_checked_at and not token.last_success_at and not token.last_error),
         "total_lists": len(lists),
-        "enabled_lists": sum(1 for item in lists if item.enabled),
+        "enabled_lists": len(enabled_lists),
+        "healthy_lists": sum(1 for item in enabled_lists if item.healthy and item.last_success_at),
+        "unchecked_lists": sum(1 for item in enabled_lists if not item.last_checked_at and not item.last_success_at and not item.last_error),
         "total_rsshub": len(rsshub_instances),
         "last_checked_at": last_checked,
         "telegram_ready": bool(settings["telegram_bot_token"] and settings["telegram_chat_id"]),
@@ -239,9 +222,9 @@ async def index(
         "index.html",
         {
             "request": request,
-            "tokens": tokens,
             "lists": lists,
             "rsshub_instances": rsshub_instances,
+            "rsshub_by_id": rsshub_by_id,
             "proxies": proxies,
             "docker_available": docker_available(),
             "logs": logs,
@@ -332,10 +315,6 @@ async def export_data(
             {"key": item.key, "value": item.value}
             for item in db.query(Setting).order_by(Setting.key.asc()).all()
         ],
-        "token_instances": [
-            serialize_row(item, TOKEN_EXPORT_FIELDS)
-            for item in db.query(TokenInstance).order_by(TokenInstance.id.asc()).all()
-        ],
         "watch_lists": [
             serialize_row(item, LIST_EXPORT_FIELDS)
             for item in db.query(WatchList).order_by(WatchList.id.asc()).all()
@@ -386,11 +365,9 @@ async def import_data(
         return RedirectResponse("/#settings", status_code=303)
 
     try:
-        db.query(TokenListState).delete()
         db.query(SeenItem).delete()
         db.query(WatchList).delete()
         db.query(RsshubInstance).delete()
-        db.query(TokenInstance).delete()
         db.query(ProxyProfile).delete()
         db.query(UserAlias).delete()
 
@@ -398,9 +375,6 @@ async def import_data(
             key = str(item.get("key", "")).strip()
             if key and key not in PROTECTED_IMPORT_SETTINGS:
                 set_setting(db, key, str(item.get("value", "")))
-
-        for item in payload.get("token_instances", []):
-            db.add(TokenInstance(**clean_payload(item, TOKEN_EXPORT_FIELDS)))
 
         imported_list_ids: set[str] = set()
         for item in payload.get("watch_lists", []):
@@ -411,6 +385,7 @@ async def import_data(
                 continue
             imported_list_ids.add(list_value)
             clean["list_id"] = list_value
+            clean["rsshub_instance_id"] = int(clean.get("rsshub_instance_id") or 0)
             db.add(WatchList(**clean))
 
         for item in payload.get("seen_items", []):
@@ -432,7 +407,7 @@ async def import_data(
 
         migrate_existing_proxies(db)
 
-        add_log(db, "INFO", "数据导入完成，已覆盖 Token、List、用户备注、系统配置和去重记录")
+        add_log(db, "INFO", "数据导入完成，已覆盖 RSSHub、List、用户备注、系统配置和去重记录")
     except Exception as exc:
         db.rollback()
         add_log(db, "ERROR", f"导入失败：{exc}")
@@ -513,10 +488,9 @@ async def save_proxy(
             add_log(db, "ERROR", "代理保存失败：名称或地址已存在")
             return RedirectResponse("/#proxies", status_code=303)
         old_url = proxy.proxy_url
-        tokens_using_proxy = db.query(TokenInstance).filter(TokenInstance.proxy_url == old_url).all()
         rsshub_using_proxy = db.query(RsshubInstance).filter(RsshubInstance.proxy_uri == old_url).all()
-        if (tokens_using_proxy or rsshub_using_proxy) and not is_enabled:
-            add_log(db, "ERROR", "代理保存失败：该代理正在使用，不能停用；请先到 Token/RSSHub 切换代理。")
+        if rsshub_using_proxy and not is_enabled:
+            add_log(db, "ERROR", "代理保存失败：该代理正在被 RSSHub 使用，不能停用；请先到 RSSHub 切换代理。")
             return RedirectResponse("/#proxies", status_code=303)
         proxy.name = clean_name
         proxy.proxy_url = clean_proxy
@@ -525,7 +499,7 @@ async def save_proxy(
         proxy.last_test_message = "代理地址已修改，请重新检测。" if old_url != clean_proxy else proxy.last_test_message
         proxy.updated_at = now
         if old_url != clean_proxy:
-            sync_proxy_references(db, old_url, clean_proxy, tokens_using_proxy, rsshub_using_proxy)
+            sync_proxy_references(db, old_url, clean_proxy, rsshub_using_proxy)
     else:
         if exists:
             add_log(db, "ERROR", "代理保存失败：名称或地址已存在")
@@ -586,164 +560,12 @@ async def delete_proxy(
 ):
     proxy = db.query(ProxyProfile).filter(ProxyProfile.id == proxy_id).first()
     if proxy:
-        if db.query(TokenInstance).filter(TokenInstance.proxy_url == proxy.proxy_url).first():
-            add_log(db, "ERROR", f"代理删除失败：{proxy.name} 正被 Token 使用")
-            return RedirectResponse("/#proxies", status_code=303)
         if db.query(RsshubInstance).filter(RsshubInstance.proxy_uri == proxy.proxy_url).first():
             add_log(db, "ERROR", f"代理删除失败：{proxy.name} 正被 RSSHub 使用")
             return RedirectResponse("/#proxies", status_code=303)
         db.delete(proxy)
         add_log(db, "INFO", f"代理已删除: {proxy.name}")
     return RedirectResponse("/#proxies", status_code=303)
-
-
-@app.post("/tokens")
-async def save_token(
-    token_id: str = Form(""),
-    name: str = Form(...),
-    rsshub_url: str = Form(...),
-    auth_token: str = Form(""),
-    ct0: str = Form(""),
-    bearer_token: str = Form(""),
-    proxy_url: str = Form(""),
-    enabled: str = Form(""),
-    db: Session = Depends(get_db),
-    _: str = Depends(current_user_from_cookie),
-):
-    now = utc_now()
-    is_enabled = enabled == "on"
-    selected_proxy = resolve_proxy_choice(db, proxy_url)
-    if proxy_url and selected_proxy is None:
-        add_log(db, "ERROR", "Token 保存失败：请选择代理设置里已有且启用的代理")
-        return RedirectResponse("/#token-config", status_code=303)
-    redirect_url = "/#token-config"
-    if token_id:
-        token = db.query(TokenInstance).filter(TokenInstance.id == int(token_id)).first()
-        if not token:
-            raise HTTPException(status_code=404, detail="Token not found")
-        redirect_url = token_anchor(token.id)
-        old_auth_token = token.auth_token
-        old_ct0 = token.ct0
-        old_bearer_token = token.bearer_token
-        old_proxy_url = token.proxy_url
-        token.name = name.strip()
-        token.rsshub_url = rsshub_url.strip()
-        if auth_token.strip():
-            token.auth_token = auth_token.strip()
-        if ct0.strip():
-            token.ct0 = ct0.strip()
-        if bearer_token.strip():
-            token.bearer_token = bearer_token.strip()
-        token.proxy_url = selected_proxy
-        token.enabled = is_enabled
-        token.updated_at = now
-        if (
-            token.auth_token != old_auth_token
-            or token.ct0 != old_ct0
-            or token.bearer_token != old_bearer_token
-            or token.proxy_url != old_proxy_url
-        ):
-            db.query(TokenListState).filter(TokenListState.token_id == token.id).update(
-                {
-                    "subscription_checked_at": None,
-                    "subscription_error": "",
-                    "updated_at": now,
-                }
-            )
-    else:
-        token = TokenInstance(
-            name=name.strip(),
-            rsshub_url=rsshub_url.strip(),
-            auth_token=auth_token.strip(),
-            ct0=ct0.strip(),
-            bearer_token=bearer_token.strip(),
-            proxy_url=selected_proxy,
-            enabled=is_enabled,
-        )
-        db.add(token)
-    add_log(db, "INFO", f"Token 配置已保存: {name}")
-    if not token_id:
-        db.flush()
-        redirect_url = token_anchor(token.id)
-    return RedirectResponse(redirect_url, status_code=303)
-
-
-@app.post("/tokens/{token_id}/delete")
-async def delete_token(
-    token_id: int,
-    db: Session = Depends(get_db),
-    _: str = Depends(current_user_from_cookie),
-):
-    token = db.query(TokenInstance).filter(TokenInstance.id == token_id).first()
-    if token:
-        db.query(TokenListState).filter(TokenListState.token_id == token_id).delete()
-        db.delete(token)
-        add_log(db, "INFO", f"Token 已删除: {token_id}")
-    return RedirectResponse("/#token-config", status_code=303)
-
-
-@app.post("/tokens/{token_id}/check")
-async def check_token(
-    token_id: int,
-    db: Session = Depends(get_db),
-    _: str = Depends(current_user_from_cookie),
-):
-    token = db.query(TokenInstance).filter(TokenInstance.id == token_id).first()
-    watch_list = db.query(WatchList).filter(WatchList.token_id == 0, WatchList.enabled.is_(True)).order_by(WatchList.id.asc()).first()
-    if not token:
-        add_log(db, "ERROR", "手动检测失败：Token 不存在")
-        return RedirectResponse("/#token-config", status_code=303)
-    if not watch_list:
-        token.last_checked_at = utc_now()
-        token.healthy = False
-        token.last_error = "没有启用的 List，无法检测。"
-        token.updated_at = utc_now()
-        add_log(db, "ERROR", f"{token.name} 手动检测失败：没有启用的 List")
-        return RedirectResponse(token_anchor(token_id), status_code=303)
-
-    await watcher.check_pair(token_id, watch_list.id)
-    return RedirectResponse(token_anchor(token_id), status_code=303)
-
-
-@app.post("/tokens/{token_id}/repair")
-async def repair_token(
-    token_id: int,
-    db: Session = Depends(get_db),
-    _: str = Depends(current_user_from_cookie),
-):
-    token = db.query(TokenInstance).filter(TokenInstance.id == token_id).first()
-    watch_list = db.query(WatchList).filter(WatchList.token_id == 0, WatchList.enabled.is_(True)).order_by(WatchList.id.asc()).first()
-    if not token or not watch_list:
-        add_log(db, "ERROR", "手动修复失败：Token 或启用的 List 不存在")
-        return RedirectResponse(token_anchor(token_id), status_code=303)
-    token_snapshot = snapshot_token(token)
-    list_snapshot = snapshot_list(watch_list)
-    success, detail, query_id = await attempt_graphql_repair(token_snapshot, list_snapshot)
-    if success:
-        token.use_fallback = True
-        token.graphql_query_id = query_id
-        token.healthy = True
-        token.last_error = ""
-        token.last_repaired_at = utc_now()
-    else:
-        token.healthy = False
-        token.last_error = detail
-    add_log(db, "INFO" if success else "ERROR", f"手动 GraphQL 修复结果: {detail}")
-    return RedirectResponse(token_anchor(token_id), status_code=303)
-
-
-@app.post("/tokens/{token_id}/fallback")
-async def toggle_fallback(
-    token_id: int,
-    db: Session = Depends(get_db),
-    _: str = Depends(current_user_from_cookie),
-):
-    token = db.query(TokenInstance).filter(TokenInstance.id == token_id).first()
-    if token:
-        token.use_fallback = not token.use_fallback
-        token.updated_at = utc_now()
-        add_log(db, "INFO", f"{token.name} fallback 状态切换为 {token.use_fallback}")
-    return RedirectResponse(token_anchor(token_id), status_code=303)
 
 
 @app.post("/rsshub")
@@ -804,6 +626,7 @@ async def create_rsshub(
             updated_at=utc_now(),
         )
     )
+    ensure_list_rsshub_bindings(db)
     return RedirectResponse("/#rsshub", status_code=303)
 
 
@@ -845,6 +668,7 @@ async def discover_rsshub(
                 )
             )
     add_log(db, "INFO", f"RSSHub 查询完成：当前发现 {len(containers)} 个容器")
+    ensure_list_rsshub_bindings(db)
     return RedirectResponse("/#rsshub", status_code=303)
 
 
@@ -986,27 +810,45 @@ async def delete_rsshub(
 
 @app.post("/lists")
 async def save_list(
+    list_row_id: str = Form(""),
     name: str = Form(""),
     list_id: str = Form(...),
+    rsshub_instance_id: int = Form(0),
     db: Session = Depends(get_db),
     _: str = Depends(current_user_from_cookie),
 ):
     value = extract_list_id(list_id)
-    old = db.query(WatchList).filter(WatchList.token_id == 0, WatchList.list_id == value).first()
+    selected_rsshub_id = resolve_rsshub_choice(db, rsshub_instance_id)
+    if rsshub_instance_id and not selected_rsshub_id:
+        add_log(db, "ERROR", "List 保存失败：请选择有效的 RSSHub 容器")
+        return RedirectResponse("/#lists", status_code=303)
+    old = None
+    if list_row_id:
+        old = db.query(WatchList).filter(WatchList.id == int(list_row_id), WatchList.token_id == 0).first()
+        if not old:
+            add_log(db, "ERROR", "List 保存失败：记录不存在")
+            return RedirectResponse("/#lists", status_code=303)
+    if not old:
+        old = db.query(WatchList).filter(WatchList.token_id == 0, WatchList.list_id == value).first()
     if old:
         old.name = name.strip()
+        old.list_id = value
+        old.rsshub_instance_id = selected_rsshub_id
         old.enabled = True
-        old.subscription_checked_at = None
-        old.subscription_error = ""
-        db.query(TokenListState).filter(TokenListState.watch_list_id == old.id).update(
-            {
-                "subscription_checked_at": None,
-                "subscription_error": "",
-                "updated_at": utc_now(),
-            }
-        )
+        old.healthy = True
+        old.last_error = ""
+        old.last_checked_at = None
+        old.last_success_at = None
     else:
-        db.add(WatchList(token_id=0, name=name.strip(), list_id=value, enabled=True))
+        db.add(
+            WatchList(
+                token_id=0,
+                rsshub_instance_id=selected_rsshub_id,
+                name=name.strip(),
+                list_id=value,
+                enabled=True,
+            )
+        )
     add_log(db, "INFO", f"List 已保存: {value}")
     return RedirectResponse("/#lists", status_code=303)
 
@@ -1024,6 +866,20 @@ async def toggle_list(
     return RedirectResponse(redirect_url, status_code=303)
 
 
+@app.post("/lists/{list_id}/check")
+async def check_list(
+    list_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    item = db.query(WatchList).filter(WatchList.id == list_id, WatchList.token_id == 0).first()
+    if not item:
+        add_log(db, "ERROR", "List 手动检测失败：记录不存在")
+        return RedirectResponse("/#lists", status_code=303)
+    await watcher.check_list(item.id)
+    return RedirectResponse("/#lists", status_code=303)
+
+
 @app.post("/lists/{list_id}/delete")
 async def delete_list(
     list_id: int,
@@ -1033,7 +889,6 @@ async def delete_list(
     item = db.query(WatchList).filter(WatchList.id == list_id).first()
     redirect_url = "/#lists"
     if item:
-        db.query(TokenListState).filter(TokenListState.watch_list_id == item.id).delete()
         db.delete(item)
     return RedirectResponse(redirect_url, status_code=303)
 
@@ -1058,10 +913,6 @@ def extract_list_id(value: str) -> str:
         return match.group(1)
     match = re.search(r"(\d{5,})", value)
     return match.group(1) if match else value
-
-
-def token_anchor(token_id: int) -> str:
-    return f"/#token-{token_id}"
 
 
 def normalize_username(value: str) -> str:
@@ -1154,32 +1005,52 @@ def resolve_proxy_choice(db: Session, value: str) -> str | None:
     return proxy.proxy_url if proxy else None
 
 
+def resolve_rsshub_choice(db: Session, value: int) -> int:
+    if value:
+        exists = db.query(RsshubInstance.id).filter(RsshubInstance.id == value).first()
+        return value if exists else 0
+    first = db.query(RsshubInstance).order_by(RsshubInstance.host_port.asc(), RsshubInstance.id.asc()).first()
+    return int(first.id) if first else 0
+
+
+def ensure_list_rsshub_bindings(
+    db: Session,
+    lists: list[WatchList] | None = None,
+    rsshub_instances: list[RsshubInstance] | None = None,
+) -> None:
+    lists = lists if lists is not None else db.query(WatchList).filter(WatchList.token_id == 0).all()
+    rsshub_instances = (
+        rsshub_instances
+        if rsshub_instances is not None
+        else db.query(RsshubInstance).order_by(RsshubInstance.host_port.asc(), RsshubInstance.id.asc()).all()
+    )
+    if not lists or not rsshub_instances:
+        return
+    known_ids = {item.id for item in rsshub_instances}
+    default_id = rsshub_instances[0].id
+    changed = 0
+    for watch_list in lists:
+        if watch_list.rsshub_instance_id not in known_ids:
+            watch_list.rsshub_instance_id = default_id
+            changed += 1
+    if changed:
+        add_log(db, "INFO", f"已为 {changed} 个 List 绑定默认 RSSHub。")
+
+
 def sync_proxy_references(
     db: Session,
     old_url: str,
     new_url: str,
-    tokens: list[TokenInstance] | None = None,
     rsshub_instances: list[RsshubInstance] | None = None,
 ) -> None:
     if not old_url or old_url == new_url:
         return
-    tokens = tokens if tokens is not None else db.query(TokenInstance).filter(TokenInstance.proxy_url == old_url).all()
     rsshub_instances = (
         rsshub_instances
         if rsshub_instances is not None
         else db.query(RsshubInstance).filter(RsshubInstance.proxy_uri == old_url).all()
     )
     now = utc_now()
-    for token in tokens:
-        token.proxy_url = new_url
-        token.updated_at = now
-        db.query(TokenListState).filter(TokenListState.token_id == token.id).update(
-            {
-                "subscription_checked_at": None,
-                "subscription_error": "",
-                "updated_at": now,
-            }
-        )
     for item in rsshub_instances:
         item.proxy_uri = new_url
         item.updated_at = now
@@ -1204,7 +1075,7 @@ def sync_proxy_references(
     add_log(
         db,
         "INFO",
-        f"代理地址已同步到 {len(tokens)} 个 Token、{len(rsshub_instances)} 个 RSSHub 配置。",
+        f"代理地址已同步到 {len(rsshub_instances)} 个 RSSHub 配置。",
     )
 
 
@@ -1231,7 +1102,6 @@ async def run_proxy_test(proxy_url: str) -> tuple[bool, str]:
 
 def migrate_existing_proxies(db: Session) -> None:
     values = []
-    values.extend(proxy for (proxy,) in db.query(TokenInstance.proxy_url).filter(TokenInstance.proxy_url != "").all())
     values.extend(proxy for (proxy,) in db.query(RsshubInstance.proxy_uri).filter(RsshubInstance.proxy_uri != "").all())
     existing = {proxy.proxy_url for proxy in db.query(ProxyProfile).all()}
     now = utc_now()

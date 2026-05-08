@@ -576,6 +576,18 @@ button:hover,
   margin-bottom: 14px;
 }
 
+.monitor-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.monitor-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+}
+
 .add-panel {
   margin-bottom: 14px;
 }
@@ -796,6 +808,21 @@ summary {
   gap: 8px;
 }
 
+.inline-edit {
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.inline-edit summary {
+  color: var(--brand-dark);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.inline-edit form {
+  margin-top: 10px;
+}
+
 .log {
   display: grid;
   grid-template-columns: 190px 58px 1fr;
@@ -886,7 +913,8 @@ summary {
   }
 
   .page-top,
-  .token-head {
+  .token-head,
+  .monitor-card {
     display: grid;
   }
 
@@ -907,6 +935,7 @@ summary {
   .proxy-form,
   .alias-form,
   .import-form,
+  .monitor-card,
   .alias-row,
   .list-form,
   .rsshub-row,

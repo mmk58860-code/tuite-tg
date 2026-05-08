@@ -68,9 +68,15 @@ class WatchList(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     token_id = Column(Integer, nullable=False, index=True)
+    rsshub_instance_id = Column(Integer, nullable=False, default=0, index=True)
     name = Column(String(120), nullable=False, default="")
     list_id = Column(String(80), nullable=False)
     enabled = Column(Boolean, nullable=False, default=True)
+    healthy = Column(Boolean, nullable=False, default=True)
+    last_error = Column(Text, nullable=False, default="")
+    last_checked_at = Column(DateTime(timezone=True), nullable=True)
+    last_success_at = Column(DateTime(timezone=True), nullable=True)
+    last_alerted_at = Column(DateTime(timezone=True), nullable=True)
     subscription_checked_at = Column(DateTime(timezone=True), nullable=True)
     subscription_error = Column(Text, nullable=False, default="")
     created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
@@ -187,6 +193,18 @@ def ensure_schema_migrations() -> None:
             conn.exec_driver_sql("ALTER TABLE watch_lists ADD COLUMN subscription_checked_at DATETIME")
         if "subscription_error" not in list_columns:
             conn.exec_driver_sql("ALTER TABLE watch_lists ADD COLUMN subscription_error TEXT NOT NULL DEFAULT ''")
+        if "rsshub_instance_id" not in list_columns:
+            conn.exec_driver_sql("ALTER TABLE watch_lists ADD COLUMN rsshub_instance_id INTEGER NOT NULL DEFAULT 0")
+        if "healthy" not in list_columns:
+            conn.exec_driver_sql("ALTER TABLE watch_lists ADD COLUMN healthy BOOLEAN NOT NULL DEFAULT 1")
+        if "last_error" not in list_columns:
+            conn.exec_driver_sql("ALTER TABLE watch_lists ADD COLUMN last_error TEXT NOT NULL DEFAULT ''")
+        if "last_checked_at" not in list_columns:
+            conn.exec_driver_sql("ALTER TABLE watch_lists ADD COLUMN last_checked_at DATETIME")
+        if "last_success_at" not in list_columns:
+            conn.exec_driver_sql("ALTER TABLE watch_lists ADD COLUMN last_success_at DATETIME")
+        if "last_alerted_at" not in list_columns:
+            conn.exec_driver_sql("ALTER TABLE watch_lists ADD COLUMN last_alerted_at DATETIME")
         conn.exec_driver_sql(
             """
             DELETE FROM watch_lists
@@ -198,6 +216,19 @@ def ensure_schema_migrations() -> None:
             """
         )
         conn.exec_driver_sql("UPDATE watch_lists SET token_id = 0 WHERE token_id != 0")
+        conn.exec_driver_sql(
+            """
+            UPDATE watch_lists
+            SET rsshub_instance_id = (
+                SELECT id
+                FROM rsshub_instances
+                ORDER BY host_port ASC, id ASC
+                LIMIT 1
+            )
+            WHERE rsshub_instance_id = 0
+              AND EXISTS (SELECT 1 FROM rsshub_instances)
+            """
+        )
 
         rsshub_columns = {
             row[1]

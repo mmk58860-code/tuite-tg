@@ -16,6 +16,9 @@ services:
   # 实际使用时复制 rsshub1 到 rsshub10，并修改端口、token、代理。
   rsshub1:
     image: diygod/rsshub:latest
+    labels:
+      managed-by: tuite-tg
+      tuite-tg-rsshub: "true"
     ports:
       - "127.0.0.1:1201:1200"
     environment:
@@ -27,6 +30,9 @@ services:
 
   rsshub2:
     image: diygod/rsshub:latest
+    labels:
+      managed-by: tuite-tg
+      tuite-tg-rsshub: "true"
     ports:
       - "127.0.0.1:1202:1200"
     environment:

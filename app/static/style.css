@@ -266,6 +266,10 @@ p {
   grid-column: span 2;
 }
 
+.span-4 {
+  grid-column: 1 / -1;
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -499,6 +503,12 @@ summary {
   gap: 4px;
 }
 
+.rsshub-row > details {
+  margin-top: 2px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
 .rsshub-row code {
   width: fit-content;
 }
@@ -601,6 +611,10 @@ summary {
   }
 
   .span-2 {
+    grid-column: span 1;
+  }
+
+  .span-4 {
     grid-column: span 1;
   }
 }

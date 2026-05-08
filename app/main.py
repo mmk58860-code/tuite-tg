@@ -37,6 +37,7 @@ from .docker_manager import (
     docker_available,
     inspect_container,
     list_rsshub_containers,
+    recreate_rsshub_container,
     remove_container,
 )
 from .notifier import format_alert, send_telegram
@@ -714,6 +715,41 @@ async def refresh_rsshub(
             item.status = "unknown"
             item.updated_at = utc_now()
             add_log(db, "ERROR", f"RSSHub 状态刷新失败: {exc}")
+    return RedirectResponse("/#rsshub", status_code=303)
+
+
+@app.post("/rsshub/{rsshub_id}/update")
+async def update_rsshub(
+    rsshub_id: int,
+    twitter_auth_token: str = Form(""),
+    third_party_api: str = Form(""),
+    proxy_uri: str = Form(""),
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    item = db.query(RsshubInstance).filter(RsshubInstance.id == rsshub_id).first()
+    if not item:
+        add_log(db, "ERROR", "RSSHub 更新失败：实例不存在")
+        return RedirectResponse("/#rsshub", status_code=303)
+    item.twitter_auth_token = twitter_auth_token.strip()
+    item.third_party_api = third_party_api.strip()
+    item.proxy_uri = proxy_uri.strip()
+    item.updated_at = utc_now()
+    try:
+        info = recreate_rsshub_container(
+            item.name,
+            item.host_port,
+            item.twitter_auth_token,
+            item.third_party_api,
+            item.proxy_uri,
+            item.container_id,
+        )
+        item.container_id = info.container_id
+        item.status = info.status
+        add_log(db, "INFO", f"RSSHub 配置已更新并重建容器: {item.name}")
+    except DockerManagerError as exc:
+        item.status = "update_failed"
+        add_log(db, "ERROR", f"RSSHub 配置更新失败: {item.name} - {exc}")
     return RedirectResponse("/#rsshub", status_code=303)
 
 

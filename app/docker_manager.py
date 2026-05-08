@@ -97,6 +97,20 @@ def create_rsshub_container(
     return ContainerInfo(container_id=container_id, status="running")
 
 
+def recreate_rsshub_container(
+    name: str,
+    host_port: int,
+    twitter_auth_token: str = "",
+    third_party_api: str = "",
+    proxy_uri: str = "",
+    old_container_id: str = "",
+) -> ContainerInfo:
+    target = old_container_id or find_container_id_by_name(name)
+    if target:
+        remove_container(target)
+    return create_rsshub_container(name, host_port, twitter_auth_token, third_party_api, proxy_uri)
+
+
 def remove_container(container_id: str) -> None:
     if not container_id:
         return
@@ -105,6 +119,13 @@ def remove_container(container_id: str) -> None:
     except DockerManagerError:
         pass
     _request("DELETE", f"/containers/{container_id}?force=true")
+
+
+def find_container_id_by_name(name: str) -> str:
+    for container in list_rsshub_containers():
+        if container.name == name:
+            return container.container_id
+    return ""
 
 
 def inspect_container(container_id: str) -> ContainerInfo:

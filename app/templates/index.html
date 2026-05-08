@@ -122,7 +122,7 @@
         </div>
         <div class="actions">
           {% if item.status == 'compose' %}
-            <span class="muted">内置服务，不可删除</span>
+            <span class="muted">内置服务，可编辑代理</span>
           {% elif item.container_id %}
             <form method="post" action="/rsshub/{{ item.id }}/refresh">
               <button type="submit" class="secondary">刷新状态</button>
@@ -137,6 +137,23 @@
             </form>
           {% endif %}
         </div>
+        <details class="span-4">
+          <summary>编辑 RSSHub 配置</summary>
+          <form class="rsshub-form edit-form" method="post" action="/rsshub/{{ item.id }}/update" data-confirm="确认保存并重建 RSSHub 容器：{{ item.name }} 吗？">
+            <label>RSSHub auth_token
+              <input name="twitter_auth_token" value="{{ item.twitter_auth_token }}" autocomplete="off" placeholder="可选；给 RSSHub 使用">
+            </label>
+            <label>第三方 API
+              <input name="third_party_api" value="{{ item.third_party_api }}" autocomplete="off" placeholder="可选">
+            </label>
+            <label class="span-2">RSSHub 代理
+              <input name="proxy_uri" value="{{ item.proxy_uri }}" placeholder="socks5://用户:密码@IP:端口 或 http://用户:密码@IP:端口">
+            </label>
+            <div class="actions span-2">
+              <button type="submit">保存并重建</button>
+            </div>
+          </form>
+        </details>
       </div>
     {% else %}
       <p class="muted">暂无记录。点击“查询当前 RSSHub 容器”可以扫描当前 Docker 里已有的 RSSHub。</p>

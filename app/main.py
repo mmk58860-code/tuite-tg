@@ -147,28 +147,7 @@ def ensure_defaults() -> None:
         for key, value in defaults.items():
             if not get_setting(db, key, ""):
                 set_setting(db, key, value)
-        ensure_default_rsshub_rows(db)
         add_log(db, "INFO", "Tuite TG 已启动")
-
-
-def ensure_default_rsshub_rows(db: Session) -> None:
-    defaults = [
-        ("rsshub1", 1201),
-        ("rsshub2", 1202),
-    ]
-    for name, host_port in defaults:
-        exists = db.query(RsshubInstance).filter(RsshubInstance.name == name).first()
-        if not exists:
-            db.add(
-                RsshubInstance(
-                    name=name,
-                    host_port=host_port,
-                    internal_url=f"http://{name}:1200",
-                    status="compose",
-                    created_at=utc_now(),
-                    updated_at=utc_now(),
-                )
-            )
 
 
 def wants_html(request: Request) -> bool:
@@ -767,6 +746,8 @@ async def test_rsshub(
 @app.post("/rsshub/{rsshub_id}/update")
 async def update_rsshub(
     rsshub_id: int,
+    name: str = Form(...),
+    host_port: int = Form(...),
     twitter_auth_token: str = Form(""),
     third_party_api: str = Form(""),
     proxy_uri: str = Form(""),
@@ -777,6 +758,26 @@ async def update_rsshub(
     if not item:
         add_log(db, "ERROR", "RSSHub 更新失败：实例不存在")
         return RedirectResponse("/#rsshub", status_code=303)
+    clean_name = sanitize_container_name(name)
+    if not clean_name:
+        add_log(db, "ERROR", "RSSHub 更新失败：名称不能为空")
+        return RedirectResponse("/#rsshub", status_code=303)
+    if host_port < 1 or host_port > 65535:
+        add_log(db, "ERROR", "RSSHub 更新失败：端口必须在 1-65535 之间")
+        return RedirectResponse("/#rsshub", status_code=303)
+    exists = (
+        db.query(RsshubInstance)
+        .filter(RsshubInstance.id != rsshub_id)
+        .filter((RsshubInstance.name == clean_name) | (RsshubInstance.host_port == host_port))
+        .first()
+    )
+    if exists:
+        add_log(db, "ERROR", "RSSHub 更新失败：名称或端口已存在")
+        return RedirectResponse("/#rsshub", status_code=303)
+    old_name = item.name
+    item.name = clean_name
+    item.host_port = host_port
+    item.internal_url = f"http://{clean_name}:1200"
     item.twitter_auth_token = twitter_auth_token.strip()
     item.third_party_api = third_party_api.strip()
     item.proxy_uri = proxy_uri.strip()
@@ -792,7 +793,7 @@ async def update_rsshub(
         )
         item.container_id = info.container_id
         item.status = info.status
-        add_log(db, "INFO", f"RSSHub 配置已更新并重建容器: {item.name}")
+        add_log(db, "INFO", f"RSSHub 配置已更新并重建容器: {old_name} -> {item.name}:{item.host_port}")
     except DockerManagerError as exc:
         item.status = "update_failed"
         add_log(db, "ERROR", f"RSSHub 配置更新失败: {item.name} - {exc}")
@@ -807,9 +808,6 @@ async def delete_rsshub(
 ):
     item = db.query(RsshubInstance).filter(RsshubInstance.id == rsshub_id).first()
     if item:
-        if item.status == "compose":
-            add_log(db, "ERROR", f"内置 RSSHub 服务不能从网页删除: {item.name}")
-            return RedirectResponse("/#rsshub", status_code=303)
         if item.container_id:
             try:
                 remove_container(item.container_id)

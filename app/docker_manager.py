@@ -118,7 +118,12 @@ def remove_container(container_id: str) -> None:
         _request("POST", f"/containers/{container_id}/stop?t=10")
     except DockerManagerError:
         pass
-    _request("DELETE", f"/containers/{container_id}?force=true")
+    try:
+        _request("DELETE", f"/containers/{container_id}?force=true")
+    except DockerManagerError as exc:
+        if "Docker API 404" in str(exc) or "No such container" in str(exc):
+            return
+        raise
 
 
 def find_container_id_by_name(name: str) -> str:
@@ -147,7 +152,7 @@ def list_rsshub_containers() -> list[RsshubContainer]:
         primary_name = names[0] if names else str(item.get("Id", ""))[:12]
         normalized_name = normalize_compose_name(primary_name)
         managed = labels.get("tuite-tg-rsshub") == "true"
-        status = "compose" if is_compose_rsshub_name(primary_name) and not managed else str(item.get("State", "unknown"))
+        status = str(item.get("State", "unknown"))
         image = str(item.get("Image", ""))
         is_rsshub = (
             labels.get("tuite-tg-rsshub") == "true"
@@ -184,7 +189,3 @@ def normalize_compose_name(name: str) -> str:
     if name.startswith("tuite-tg-") and name.endswith("-1"):
         return name.removeprefix("tuite-tg-").removesuffix("-1")
     return name
-
-
-def is_compose_rsshub_name(name: str) -> bool:
-    return name.startswith("tuite-tg-rsshub") and name.endswith("-1")

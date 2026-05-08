@@ -11,33 +11,3 @@ services:
     restart: unless-stopped
     environment:
       DOCKER_NETWORK: tuite-tg_default
-
-  # 示例：每个 RSSHub 实例绑定一个 token 和一个代理。
-  # 实际使用时复制 rsshub1 到 rsshub10，并修改端口、token、代理。
-  rsshub1:
-    image: diygod/rsshub:latest
-    labels:
-      managed-by: tuite-tg
-      tuite-tg-rsshub: "true"
-    ports:
-      - "127.0.0.1:1201:1200"
-    environment:
-      CACHE_EXPIRE: 30
-      TWITTER_AUTH_TOKEN: "${RSSHUB1_TWITTER_AUTH_TOKEN:-}"
-      TWITTER_THIRD_PARTY_API: "${RSSHUB1_TWITTER_THIRD_PARTY_API:-}"
-      PROXY_URI: "${RSSHUB1_PROXY_URI:-}"
-    restart: unless-stopped
-
-  rsshub2:
-    image: diygod/rsshub:latest
-    labels:
-      managed-by: tuite-tg
-      tuite-tg-rsshub: "true"
-    ports:
-      - "127.0.0.1:1202:1200"
-    environment:
-      CACHE_EXPIRE: 30
-      TWITTER_AUTH_TOKEN: "${RSSHUB2_TWITTER_AUTH_TOKEN:-}"
-      TWITTER_THIRD_PARTY_API: "${RSSHUB2_TWITTER_THIRD_PARTY_API:-}"
-      PROXY_URI: "${RSSHUB2_PROXY_URI:-}"
-    restart: unless-stopped

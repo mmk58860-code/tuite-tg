@@ -82,28 +82,23 @@ cd C:\Users\Administrator\Desktop\tuite-tg
 
 ## RSSHub 实例建议
 
-推荐每个 token 一个 RSSHub 容器：
+推荐每个 token 一个 RSSHub 容器，全部在网页后台 `Token配置 -> RSSHub 容器` 里新增、编辑、删除：
 
 ```text
-rsshub1 -> http://127.0.0.1:1201 -> token1 + proxy1
-rsshub2 -> http://127.0.0.1:1202 -> token2 + proxy2
+rsshub1 -> http://rsshub1:1200 -> token1 + proxy1
+rsshub2 -> http://rsshub2:1200 -> token2 + proxy2
 ...
-rsshub10 -> http://127.0.0.1:1210 -> token10 + proxy10
+rsshub10 -> http://rsshub10:1200 -> token10 + proxy10
 ```
 
-`docker-compose.yml` 里已经放了 `rsshub1` 和 `rsshub2` 示例。复制到 `rsshub10` 后修改端口和环境变量即可。
-RSSHub 当前文档里 Twitter List 路由标注需要 `TWITTER_AUTH_TOKEN` 和 `TWITTER_THIRD_PARTY_API`，所以 `.env` 里也要给每个实例补对应值。
-也可以生成 10 个服务块：
-
-```powershell
-.\scripts\generate-rsshub-compose.ps1 -Count 10 -StartPort 1201
-```
+`docker-compose.yml` 只保留主程序，不再固定写死 `rsshub1`、`rsshub2`。这样重启服务后，不会把网页里删除或改名的 RSSHub 容器重新拉回来。
+RSSHub 当前文档里 Twitter List 路由标注需要 `TWITTER_AUTH_TOKEN` 和 `TWITTER_THIRD_PARTY_API`，所以这些值也在网页新增/编辑 RSSHub 时填写。
 
 后台里新增 token 实例时：
 
 ```text
 名称：token-1
-RSSHub 地址：http://127.0.0.1:1201
+RSSHub 地址：http://rsshub1:1200
 auth_token：同 RSSHub 里配置的 token
 ct0：用于 fallback 抓取，建议填写
 代理：fallback 抓取时使用，例如 socks5://127.0.0.1:1080
@@ -132,7 +127,6 @@ ct0：用于 fallback 抓取，建议填写
 
 ## 下一步可增强
 
-- 一键生成 10 个 RSSHub compose 服务。
 - RSSHub 健康检查和镜像版本提示。
 - Telegram 按失败类型分级报警。
 - Redis 去重，方便多进程部署。

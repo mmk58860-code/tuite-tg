@@ -29,100 +29,6 @@
   </div>
 </section>
 
-<section class="band" id="backup">
-  <div class="section-head">
-    <div>
-      <h2>数据备份</h2>
-      <p>导出文件包含系统配置、Token、List、用户备注和去重记录，请妥善保存。</p>
-    </div>
-  </div>
-  <div class="panel backup-grid">
-    <div>
-      <h3>导出数据</h3>
-      <p class="muted">用于换服务器或恢复配置，文件里会包含敏感 token 信息。</p>
-      <div class="actions">
-        <a class="button-link" href="/data/export">导出备份</a>
-      </div>
-    </div>
-    <form method="post" action="/data/import" enctype="multipart/form-data" data-confirm="确认导入并覆盖当前数据吗？Token、List、用户备注、系统配置和去重记录都会被替换。">
-      <h3>导入数据</h3>
-      <p class="muted">会覆盖 Token、List、用户备注、系统配置和去重记录，但保留当前后台登录账号密码。</p>
-      <label>备份文件
-        <input name="backup_file" type="file" accept="application/json,.json" required>
-      </label>
-      <label>确认导入
-        <input name="confirm_text" placeholder="输入 导入 后执行覆盖" required>
-      </label>
-      <div class="actions">
-        <button type="submit" class="danger">导入并覆盖</button>
-      </div>
-    </form>
-  </div>
-</section>
-
-<section class="band" id="settings">
-  <div class="section-head">
-    <div>
-      <h2>系统设置</h2>
-      <p>全局轮询建议 5 秒；每个 token 轮流执行，10 个 token 时单号约 50 秒一次。</p>
-    </div>
-  </div>
-  <form class="panel settings-grid" method="post" action="/settings">
-    <label>Telegram Bot Token
-      <input name="telegram_bot_token" value="{{ settings.telegram_bot_token }}" autocomplete="off">
-    </label>
-    <label>Telegram Chat ID
-      <input name="telegram_chat_id" value="{{ settings.telegram_chat_id }}">
-    </label>
-    <label>全局轮询秒数
-      <input name="global_poll_seconds" type="number" min="1" value="{{ settings.global_poll_seconds }}">
-    </label>
-    <label>失败冷却分钟
-      <input name="failure_cooldown_minutes" type="number" min="1" value="{{ settings.failure_cooldown_minutes }}">
-    </label>
-    <label class="span-2">Apprise URLs
-      <textarea name="apprise_urls" rows="3" placeholder="json://host/path 或 tgram://...">{{ settings.apprise_urls }}</textarea>
-    </label>
-    <div class="actions span-2">
-      <button type="submit">保存配置</button>
-      <button type="submit" class="secondary" formaction="/settings/test-telegram">测试 TG</button>
-    </div>
-  </form>
-</section>
-
-<section class="band" id="aliases">
-  <div class="section-head">
-    <div>
-      <h2>用户备注</h2>
-      <p>填写用户名和备注；命中该用户发帖时，TG 推送会显示“备注 @用户名”。</p>
-    </div>
-  </div>
-  <form class="panel alias-form" method="post" action="/aliases">
-    <label>用户名
-      <input name="username" required placeholder="@username 或 username">
-    </label>
-    <label>备注
-      <input name="note" required placeholder="例如：客户A / 重点账号 / 项目方">
-    </label>
-    <div class="actions">
-      <button type="submit">保存备注</button>
-    </div>
-  </form>
-  <div class="panel alias-list">
-    {% for alias in aliases %}
-      <div class="alias-row">
-        <strong>{{ alias.note }}</strong>
-        <code>@{{ alias.username }}</code>
-        <form method="post" action="/aliases/{{ alias.id }}/delete" data-confirm="确认删除用户备注：{{ alias.note }} @{{ alias.username }} 吗？">
-          <button type="submit" class="danger">删除</button>
-        </form>
-      </div>
-    {% else %}
-      <p class="muted">暂无用户备注。</p>
-    {% endfor %}
-  </div>
-</section>
-
 <section class="band" id="tokens">
   <div class="section-head">
     <div>
@@ -275,6 +181,100 @@
   {% else %}
     <div class="panel muted">暂无 token 实例。</div>
   {% endfor %}
+</section>
+
+<section class="band" id="aliases">
+  <div class="section-head">
+    <div>
+      <h2>用户备注</h2>
+      <p>填写用户名和备注；命中该用户发帖时，TG 推送会显示“备注 @用户名”。</p>
+    </div>
+  </div>
+  <form class="panel alias-form" method="post" action="/aliases">
+    <label>用户名
+      <input name="username" required placeholder="@username 或 username">
+    </label>
+    <label>备注
+      <input name="note" required placeholder="例如：客户A / 重点账号 / 项目方">
+    </label>
+    <div class="actions">
+      <button type="submit">保存备注</button>
+    </div>
+  </form>
+  <div class="panel alias-list">
+    {% for alias in aliases %}
+      <div class="alias-row">
+        <strong>{{ alias.note }}</strong>
+        <code>@{{ alias.username }}</code>
+        <form method="post" action="/aliases/{{ alias.id }}/delete" data-confirm="确认删除用户备注：{{ alias.note }} @{{ alias.username }} 吗？">
+          <button type="submit" class="danger">删除</button>
+        </form>
+      </div>
+    {% else %}
+      <p class="muted">暂无用户备注。</p>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="band" id="backup">
+  <div class="section-head">
+    <div>
+      <h2>数据备份</h2>
+      <p>导出文件包含系统配置、Token、List、用户备注和去重记录，请妥善保存。</p>
+    </div>
+  </div>
+  <div class="panel backup-grid">
+    <div>
+      <h3>导出数据</h3>
+      <p class="muted">用于换服务器或恢复配置，文件里会包含敏感 token 信息。</p>
+      <div class="actions">
+        <a class="button-link" href="/data/export">导出备份</a>
+      </div>
+    </div>
+    <form method="post" action="/data/import" enctype="multipart/form-data" data-confirm="确认导入并覆盖当前数据吗？Token、List、用户备注、系统配置和去重记录都会被替换。">
+      <h3>导入数据</h3>
+      <p class="muted">会覆盖 Token、List、用户备注、系统配置和去重记录，但保留当前后台登录账号密码。</p>
+      <label>备份文件
+        <input name="backup_file" type="file" accept="application/json,.json" required>
+      </label>
+      <label>确认导入
+        <input name="confirm_text" placeholder="输入 导入 后执行覆盖" required>
+      </label>
+      <div class="actions">
+        <button type="submit" class="danger">导入并覆盖</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<section class="band" id="settings">
+  <div class="section-head">
+    <div>
+      <h2>系统设置</h2>
+      <p>全局轮询建议 5 秒；每个 token 轮流执行，10 个 token 时单号约 50 秒一次。</p>
+    </div>
+  </div>
+  <form class="panel settings-grid" method="post" action="/settings">
+    <label>Telegram Bot Token
+      <input name="telegram_bot_token" value="{{ settings.telegram_bot_token }}" autocomplete="off">
+    </label>
+    <label>Telegram Chat ID
+      <input name="telegram_chat_id" value="{{ settings.telegram_chat_id }}">
+    </label>
+    <label>全局轮询秒数
+      <input name="global_poll_seconds" type="number" min="1" value="{{ settings.global_poll_seconds }}">
+    </label>
+    <label>失败冷却分钟
+      <input name="failure_cooldown_minutes" type="number" min="1" value="{{ settings.failure_cooldown_minutes }}">
+    </label>
+    <label class="span-2">Apprise URLs
+      <textarea name="apprise_urls" rows="3" placeholder="json://host/path 或 tgram://...">{{ settings.apprise_urls }}</textarea>
+    </label>
+    <div class="actions span-2">
+      <button type="submit">保存配置</button>
+      <button type="submit" class="secondary" formaction="/settings/test-telegram">测试 TG</button>
+    </div>
+  </form>
 </section>
 
 <section class="band" id="logs">

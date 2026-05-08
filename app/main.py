@@ -285,7 +285,7 @@ async def save_settings(
     set_setting(db, "global_poll_seconds", str(max(1, global_poll_seconds)))
     set_setting(db, "failure_cooldown_minutes", str(max(1, failure_cooldown_minutes)))
     add_log(db, "INFO", "系统配置已保存")
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse("/#settings", status_code=303)
 
 
 @app.post("/settings/test-telegram")
@@ -300,7 +300,7 @@ async def test_telegram(
         add_log(db, "INFO", "Telegram 测试消息发送成功")
     except Exception as exc:
         add_log(db, "ERROR", f"Telegram 测试失败: {exc}")
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse("/#settings", status_code=303)
 
 
 @app.get("/data/export")
@@ -354,7 +354,7 @@ async def import_data(
 ):
     if confirm_text.strip() != "导入":
         add_log(db, "ERROR", "导入取消：确认文字不正确")
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/#settings", status_code=303)
 
     try:
         raw = await backup_file.read()
@@ -363,7 +363,7 @@ async def import_data(
             raise ValueError("不是 Tuite TG 备份文件")
     except Exception as exc:
         add_log(db, "ERROR", f"导入失败：备份文件无法读取 ({exc})")
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/#settings", status_code=303)
 
     try:
         db.query(TokenListState).delete()
@@ -408,7 +408,7 @@ async def import_data(
     except Exception as exc:
         db.rollback()
         add_log(db, "ERROR", f"导入失败：{exc}")
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse("/#settings", status_code=303)
 
 
 @app.post("/aliases")
@@ -875,7 +875,7 @@ async def delete_list(
 @app.post("/monitor/trigger")
 async def trigger_monitor(_: str = Depends(current_user_from_cookie)):
     await watcher.trigger_once()
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse("/#dashboard", status_code=303)
 
 
 @app.get("/health")

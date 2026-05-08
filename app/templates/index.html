@@ -51,14 +51,20 @@
             <stop offset="100%" stop-color="#14b8a6" stop-opacity="0.08"></stop>
           </linearGradient>
         </defs>
-        <polygon class="chart-fill" points="0,46 {% for point in stability.step_points %}{{ point.x }},{{ point.y }} {% endfor %}100,46"></polygon>
-        <polyline class="chart-line" points="{% for point in stability.step_points %}{{ point.x }},{{ point.y }} {% endfor %}"></polyline>
+        <path class="chart-fill" d="{{ stability.line_path }} L 100 46 L 0 46 Z"></path>
+        <path class="chart-line" d="{{ stability.line_path }}"></path>
         {% for point in stability.points %}
           {% if point.offline %}
             <line class="chart-wick" x1="{{ point.x }}" y1="{{ point.y }}" x2="{{ point.x }}" y2="46"></line>
           {% endif %}
         {% endfor %}
       </svg>
+      {% for point in stability.points %}
+        <div class="chart-hover" style="left: {{ point.x }}%; top: {{ point.top }}%;">
+          <span></span>
+          <div class="chart-tip">{{ point.detail }}</div>
+        </div>
+      {% endfor %}
       <div class="chart-grid">
         <span>100%</span>
         <span>80%</span>

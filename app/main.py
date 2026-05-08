@@ -980,7 +980,6 @@ def build_stability_chart(logs: list[Log]) -> dict[str, object]:
     slots = 24
     chart_height = 46
     points: list[dict[str, object]] = []
-    step_points: list[dict[str, object]] = []
     total_score = 0
 
     for index in range(slots):
@@ -1000,29 +999,39 @@ def build_stability_chart(logs: list[Log]) -> dict[str, object]:
             {
                 "x": x,
                 "y": y,
+                "top": round(y * 100 / chart_height, 2),
                 "score": score,
                 "label": slot_start.strftime("%H:%M"),
+                "detail": f"{slot_start.strftime('%H:%M')} - 稳定度 {score}% / 错误 {errors} / 警告 {warnings}",
+                "errors": errors,
+                "warnings": warnings,
                 "offline": score < 95,
             }
         )
-        if not step_points:
-            step_points.append({"x": x, "y": y})
-        else:
-            previous_y = step_points[-1]["y"]
-            step_points.append({"x": x, "y": previous_y})
-            step_points.append({"x": x, "y": y})
 
     average = round(total_score / slots, 2) if slots else 100
     return {
         "availability": average,
         "points": points,
-        "step_points": step_points,
+        "line_path": smooth_svg_path(points),
         "labels": [
             points[index]["label"]
             for index in (0, 4, 8, 12, 16, 20, 23)
             if index < len(points)
         ],
     }
+
+
+def smooth_svg_path(points: list[dict[str, object]]) -> str:
+    if not points:
+        return ""
+    path = f"M {points[0]['x']} {points[0]['y']}"
+    for index in range(1, len(points)):
+        prev = points[index - 1]
+        current = points[index]
+        control_x = round((float(prev["x"]) + float(current["x"])) / 2, 2)
+        path += f" C {control_x} {prev['y']}, {control_x} {current['y']}, {current['x']} {current['y']}"
+    return path
 
 
 def ensure_beijing(value: datetime) -> datetime:

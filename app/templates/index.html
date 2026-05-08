@@ -29,36 +29,6 @@
   </div>
 </section>
 
-<section class="band" id="settings">
-  <div class="section-head">
-    <div>
-      <h2>系统设置</h2>
-      <p>全局轮询建议 5 秒；每个 token 轮流执行，10 个 token 时单号约 50 秒一次。</p>
-    </div>
-  </div>
-  <form class="panel settings-grid" method="post" action="/settings">
-    <label>Telegram Bot Token
-      <input name="telegram_bot_token" value="{{ settings.telegram_bot_token }}" autocomplete="off">
-    </label>
-    <label>Telegram Chat ID
-      <input name="telegram_chat_id" value="{{ settings.telegram_chat_id }}">
-    </label>
-    <label>全局轮询秒数
-      <input name="global_poll_seconds" type="number" min="1" value="{{ settings.global_poll_seconds }}">
-    </label>
-    <label>失败冷却分钟
-      <input name="failure_cooldown_minutes" type="number" min="1" value="{{ settings.failure_cooldown_minutes }}">
-    </label>
-    <label class="span-2">Apprise URLs
-      <textarea name="apprise_urls" rows="3" placeholder="json://host/path 或 tgram://...">{{ settings.apprise_urls }}</textarea>
-    </label>
-    <div class="actions span-2">
-      <button type="submit">保存配置</button>
-      <button type="submit" class="secondary" formaction="/settings/test-telegram">测试 TG</button>
-    </div>
-  </form>
-</section>
-
 <section class="band" id="backup">
   <div class="section-head">
     <div>
@@ -88,6 +58,36 @@
       </div>
     </form>
   </div>
+</section>
+
+<section class="band" id="settings">
+  <div class="section-head">
+    <div>
+      <h2>系统设置</h2>
+      <p>全局轮询建议 5 秒；每个 token 轮流执行，10 个 token 时单号约 50 秒一次。</p>
+    </div>
+  </div>
+  <form class="panel settings-grid" method="post" action="/settings">
+    <label>Telegram Bot Token
+      <input name="telegram_bot_token" value="{{ settings.telegram_bot_token }}" autocomplete="off">
+    </label>
+    <label>Telegram Chat ID
+      <input name="telegram_chat_id" value="{{ settings.telegram_chat_id }}">
+    </label>
+    <label>全局轮询秒数
+      <input name="global_poll_seconds" type="number" min="1" value="{{ settings.global_poll_seconds }}">
+    </label>
+    <label>失败冷却分钟
+      <input name="failure_cooldown_minutes" type="number" min="1" value="{{ settings.failure_cooldown_minutes }}">
+    </label>
+    <label class="span-2">Apprise URLs
+      <textarea name="apprise_urls" rows="3" placeholder="json://host/path 或 tgram://...">{{ settings.apprise_urls }}</textarea>
+    </label>
+    <div class="actions span-2">
+      <button type="submit">保存配置</button>
+      <button type="submit" class="secondary" formaction="/settings/test-telegram">测试 TG</button>
+    </div>
+  </form>
 </section>
 
 <section class="band" id="aliases">

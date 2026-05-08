@@ -513,12 +513,10 @@ async def save_proxy(
             add_log(db, "ERROR", "代理保存失败：名称或地址已存在")
             return RedirectResponse("/#proxies", status_code=303)
         old_url = proxy.proxy_url
-        in_use = (
-            db.query(TokenInstance).filter(TokenInstance.proxy_url == old_url).first()
-            or db.query(RsshubInstance).filter(RsshubInstance.proxy_uri == old_url).first()
-        )
-        if in_use and (old_url != clean_proxy or not is_enabled):
-            add_log(db, "ERROR", "代理保存失败：该代理正在使用，不能改地址或停用；请先新增并检测新代理，再到 Token/RSSHub 切换。")
+        tokens_using_proxy = db.query(TokenInstance).filter(TokenInstance.proxy_url == old_url).all()
+        rsshub_using_proxy = db.query(RsshubInstance).filter(RsshubInstance.proxy_uri == old_url).all()
+        if (tokens_using_proxy or rsshub_using_proxy) and not is_enabled:
+            add_log(db, "ERROR", "代理保存失败：该代理正在使用，不能停用；请先到 Token/RSSHub 切换代理。")
             return RedirectResponse("/#proxies", status_code=303)
         proxy.name = clean_name
         proxy.proxy_url = clean_proxy
@@ -526,6 +524,8 @@ async def save_proxy(
         proxy.last_test_ok = False if old_url != clean_proxy else proxy.last_test_ok
         proxy.last_test_message = "代理地址已修改，请重新检测。" if old_url != clean_proxy else proxy.last_test_message
         proxy.updated_at = now
+        if old_url != clean_proxy:
+            sync_proxy_references(db, old_url, clean_proxy, tokens_using_proxy, rsshub_using_proxy)
     else:
         if exists:
             add_log(db, "ERROR", "代理保存失败：名称或地址已存在")
@@ -1152,6 +1152,60 @@ def resolve_proxy_choice(db: Session, value: str) -> str | None:
         .first()
     )
     return proxy.proxy_url if proxy else None
+
+
+def sync_proxy_references(
+    db: Session,
+    old_url: str,
+    new_url: str,
+    tokens: list[TokenInstance] | None = None,
+    rsshub_instances: list[RsshubInstance] | None = None,
+) -> None:
+    if not old_url or old_url == new_url:
+        return
+    tokens = tokens if tokens is not None else db.query(TokenInstance).filter(TokenInstance.proxy_url == old_url).all()
+    rsshub_instances = (
+        rsshub_instances
+        if rsshub_instances is not None
+        else db.query(RsshubInstance).filter(RsshubInstance.proxy_uri == old_url).all()
+    )
+    now = utc_now()
+    for token in tokens:
+        token.proxy_url = new_url
+        token.updated_at = now
+        db.query(TokenListState).filter(TokenListState.token_id == token.id).update(
+            {
+                "subscription_checked_at": None,
+                "subscription_error": "",
+                "updated_at": now,
+            }
+        )
+    for item in rsshub_instances:
+        item.proxy_uri = new_url
+        item.updated_at = now
+        if item.container_id:
+            try:
+                info = recreate_rsshub_container(
+                    item.name,
+                    item.host_port,
+                    item.twitter_auth_token,
+                    item.third_party_api,
+                    item.proxy_uri,
+                    item.container_id,
+                )
+                item.container_id = info.container_id
+                item.status = info.status
+                add_log(db, "INFO", f"RSSHub 容器已按代理变更重建: {item.name}")
+            except DockerManagerError as exc:
+                item.status = "update_failed"
+                item.last_test_ok = False
+                item.last_test_message = f"代理已同步到配置，但容器重建失败：{exc}"
+                add_log(db, "ERROR", f"RSSHub 代理同步后重建失败: {item.name} - {exc}")
+    add_log(
+        db,
+        "INFO",
+        f"代理地址已同步到 {len(tokens)} 个 Token、{len(rsshub_instances)} 个 RSSHub 配置。",
+    )
 
 
 async def run_proxy_test(proxy_url: str) -> tuple[bool, str]:

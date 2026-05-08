@@ -104,6 +104,8 @@ ct0：用于 fallback 抓取，建议填写
 代理：fallback 抓取时使用，例如 socks5://127.0.0.1:1080
 ```
 
+代理设置里修改代理地址后，会自动同步到正在使用旧地址的 Token 和 RSSHub 配置；如果 RSSHub 容器是网页创建和管理的，会同时尝试按新代理重建容器，让 `PROXY_URI` 生效。正在使用中的代理不能直接停用，需要先把 Token/RSSHub 切到其它代理。
+
 ## GraphQL ID 变更时的处理
 
 当 RSSHub 返回 HTTP 错误、RSS 解析失败或其它抓取异常时：

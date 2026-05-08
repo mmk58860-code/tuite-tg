@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="band" id="dashboard">
+<section class="band is-active" id="dashboard">
   <div class="metric-grid">
     <article class="metric-card">
       <span>Token 状态</span>
@@ -328,37 +328,6 @@
     {% else %}
       <p class="muted">暂无用户备注。</p>
     {% endfor %}
-  </div>
-</section>
-
-<section class="band" id="backup">
-  <div class="section-head">
-    <div>
-      <h2>数据备份</h2>
-      <p>导出文件包含系统配置、Token、List、用户备注和去重记录，请妥善保存。</p>
-    </div>
-  </div>
-  <div class="panel backup-grid">
-    <div>
-      <h3>导出数据</h3>
-      <p class="muted">用于换服务器或恢复配置，文件里会包含敏感 token 信息。</p>
-      <div class="actions">
-        <a class="button-link" href="/data/export">导出备份</a>
-      </div>
-    </div>
-    <form method="post" action="/data/import" enctype="multipart/form-data" data-confirm="确认导入并覆盖当前数据吗？Token、List、用户备注、系统配置和去重记录都会被替换。">
-      <h3>导入数据</h3>
-      <p class="muted">会覆盖 Token、List、用户备注、系统配置和去重记录，但保留当前后台登录账号密码。</p>
-      <label>备份文件
-        <input name="backup_file" type="file" accept="application/json,.json" required>
-      </label>
-      <label>确认导入
-        <input name="confirm_text" placeholder="输入 导入 后执行覆盖" required>
-      </label>
-      <div class="actions">
-        <button type="submit" class="danger">导入并覆盖</button>
-      </div>
-    </form>
   </div>
 </section>
 

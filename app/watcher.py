@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from .database import (
     SeenItem,
+    TokenListState,
     TokenInstance,
     UserAlias,
     WatchList,
@@ -77,14 +78,20 @@ class Watcher:
 
     def _next_pair(self, db: Session) -> Optional[tuple[int, int]]:
         now = utc_now()
-        pairs = (
-            db.query(TokenInstance.id, WatchList.id)
-            .join(WatchList, WatchList.token_id == TokenInstance.id)
-            .filter(TokenInstance.enabled.is_(True), WatchList.enabled.is_(True))
+        tokens = (
+            db.query(TokenInstance)
+            .filter(TokenInstance.enabled.is_(True))
             .filter((TokenInstance.cooldown_until.is_(None)) | (TokenInstance.cooldown_until <= now))
-            .order_by(TokenInstance.id.asc(), WatchList.id.asc())
+            .order_by(TokenInstance.id.asc())
             .all()
         )
+        lists = (
+            db.query(WatchList)
+            .filter(WatchList.token_id == 0, WatchList.enabled.is_(True))
+            .order_by(WatchList.id.asc())
+            .all()
+        )
+        pairs = [(token.id, item.id) for item in lists for token in tokens]
         if not pairs:
             return None
         self._cursor = self._cursor % len(pairs)
@@ -95,15 +102,16 @@ class Watcher:
     async def poll_pair(self, token_id: int, list_row_id: int) -> None:
         with session_scope() as db:
             token = db.query(TokenInstance).filter(TokenInstance.id == token_id).first()
-            watch_list = db.query(WatchList).filter(WatchList.id == list_row_id).first()
+            watch_list = db.query(WatchList).filter(WatchList.id == list_row_id, WatchList.token_id == 0).first()
             if not token or not watch_list:
                 return
+            state = get_or_create_token_list_state(db, token.id, watch_list.id)
             token_snapshot = snapshot_token(token)
             list_snapshot = snapshot_list(watch_list)
-            should_check_subscription = watch_list.subscription_checked_at is None
+            should_check_subscription = state.subscription_checked_at is None
             bootstrap = (
                 db.query(SeenItem)
-                .filter(SeenItem.token_id == token.id, SeenItem.list_id == watch_list.list_id)
+                .filter(SeenItem.list_id == watch_list.list_id)
                 .first()
                 is None
             )
@@ -288,10 +296,7 @@ async def ensure_list_subscription(token: dict, watch_list: dict) -> None:
     if not token["auth_token"] or not token["ct0"]:
         detail = "未填写 auth_token 或 ct0，跳过自动关注 List。"
         with session_scope() as db:
-            row = db.query(WatchList).filter(WatchList.id == watch_list["id"]).first()
-            if row:
-                row.subscription_checked_at = utc_now()
-                row.subscription_error = detail
+            mark_subscription_state(db, token["id"], watch_list["id"], detail)
             add_log(db, "WARNING", f"{token['name']} / {watch_list['list_id']}: {detail}")
         return
 
@@ -306,18 +311,12 @@ async def ensure_list_subscription(token: dict, watch_list: dict) -> None:
     try:
         query_id = await client.subscribe_list(watch_list["list_id"])
         with session_scope() as db:
-            row = db.query(WatchList).filter(WatchList.id == watch_list["id"]).first()
-            if row:
-                row.subscription_checked_at = utc_now()
-                row.subscription_error = ""
+            mark_subscription_state(db, token["id"], watch_list["id"], "")
             add_log(db, "INFO", f"{token['name']} / {watch_list['list_id']} 已确认或自动关注 List，query_id={query_id}")
     except (GraphqlRepairError, httpx.HTTPError, RuntimeError) as exc:
         detail = str(exc)[:1000]
         with session_scope() as db:
-            row = db.query(WatchList).filter(WatchList.id == watch_list["id"]).first()
-            if row:
-                row.subscription_checked_at = utc_now()
-                row.subscription_error = detail
+            mark_subscription_state(db, token["id"], watch_list["id"], detail)
             add_log(db, "WARNING", f"{token['name']} / {watch_list['list_id']} 自动关注 List 失败，将继续尝试抓取: {detail}")
     finally:
         await client.close()
@@ -388,6 +387,32 @@ def snapshot_list(watch_list: WatchList) -> dict:
         "name": watch_list.name,
         "list_id": watch_list.list_id,
     }
+
+
+def get_or_create_token_list_state(db: Session, token_id: int, watch_list_id: int) -> TokenListState:
+    state = (
+        db.query(TokenListState)
+        .filter(TokenListState.token_id == token_id, TokenListState.watch_list_id == watch_list_id)
+        .first()
+    )
+    if state:
+        return state
+    state = TokenListState(token_id=token_id, watch_list_id=watch_list_id)
+    db.add(state)
+    db.flush()
+    return state
+
+
+def mark_subscription_state(db: Session, token_id: int, watch_list_id: int, error: str) -> None:
+    now = utc_now()
+    state = get_or_create_token_list_state(db, token_id, watch_list_id)
+    state.subscription_checked_at = now
+    state.subscription_error = error
+    state.updated_at = now
+    row = db.query(WatchList).filter(WatchList.id == watch_list_id).first()
+    if row:
+        row.subscription_checked_at = now
+        row.subscription_error = error
 
 
 def resolve_author_label(username: str) -> str:

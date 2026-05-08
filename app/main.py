@@ -18,6 +18,7 @@ from .database import (
     Log,
     SeenItem,
     Setting,
+    TokenListState,
     TokenInstance,
     UserAlias,
     WatchList,
@@ -161,7 +162,7 @@ async def index(
     except HTTPException:
         return RedirectResponse("/login", status_code=303)
     tokens = db.query(TokenInstance).order_by(TokenInstance.id.asc()).all()
-    lists = db.query(WatchList).order_by(WatchList.token_id.asc(), WatchList.id.asc()).all()
+    lists = db.query(WatchList).filter(WatchList.token_id == 0).order_by(WatchList.id.asc()).all()
     aliases = db.query(UserAlias).order_by(UserAlias.username.asc()).all()
     logs = db.query(Log).order_by(Log.id.desc()).limit(120).all()
     settings = {
@@ -182,15 +183,12 @@ async def index(
         "last_checked_at": last_checked,
         "telegram_ready": bool(settings["telegram_bot_token"] and settings["telegram_chat_id"]),
     }
-    list_map: dict[int, list[WatchList]] = {}
-    for item in lists:
-        list_map.setdefault(item.token_id, []).append(item)
     return templates.TemplateResponse(
         "index.html",
         {
             "request": request,
             "tokens": tokens,
-            "list_map": list_map,
+            "lists": lists,
             "logs": logs,
             "settings": settings,
             "stats": stats,
@@ -324,6 +322,7 @@ async def import_data(
         return RedirectResponse("/", status_code=303)
 
     try:
+        db.query(TokenListState).delete()
         db.query(SeenItem).delete()
         db.query(WatchList).delete()
         db.query(TokenInstance).delete()
@@ -337,8 +336,16 @@ async def import_data(
         for item in payload.get("token_instances", []):
             db.add(TokenInstance(**clean_payload(item, TOKEN_EXPORT_FIELDS)))
 
+        imported_list_ids: set[str] = set()
         for item in payload.get("watch_lists", []):
-            db.add(WatchList(**clean_payload(item, LIST_EXPORT_FIELDS)))
+            clean = clean_payload(item, LIST_EXPORT_FIELDS)
+            clean["token_id"] = 0
+            list_value = str(clean.get("list_id", "")).strip()
+            if not list_value or list_value in imported_list_ids:
+                continue
+            imported_list_ids.add(list_value)
+            clean["list_id"] = list_value
+            db.add(WatchList(**clean))
 
         for item in payload.get("seen_items", []):
             db.add(SeenItem(**clean_payload(item, SEEN_EXPORT_FIELDS)))
@@ -431,10 +438,11 @@ async def save_token(
             or token.bearer_token != old_bearer_token
             or token.proxy_url != old_proxy_url
         ):
-            db.query(WatchList).filter(WatchList.token_id == token.id).update(
+            db.query(TokenListState).filter(TokenListState.token_id == token.id).update(
                 {
                     "subscription_checked_at": None,
                     "subscription_error": "",
+                    "updated_at": now,
                 }
             )
     else:
@@ -463,7 +471,7 @@ async def delete_token(
 ):
     token = db.query(TokenInstance).filter(TokenInstance.id == token_id).first()
     if token:
-        db.query(WatchList).filter(WatchList.token_id == token_id).delete()
+        db.query(TokenListState).filter(TokenListState.token_id == token_id).delete()
         db.delete(token)
         add_log(db, "INFO", f"Token 已删除: {token_id}")
     return RedirectResponse("/#tokens", status_code=303)
@@ -476,7 +484,7 @@ async def check_token(
     _: str = Depends(current_user_from_cookie),
 ):
     token = db.query(TokenInstance).filter(TokenInstance.id == token_id).first()
-    watch_list = db.query(WatchList).filter(WatchList.token_id == token_id, WatchList.enabled.is_(True)).first()
+    watch_list = db.query(WatchList).filter(WatchList.token_id == 0, WatchList.enabled.is_(True)).order_by(WatchList.id.asc()).first()
     if not token:
         add_log(db, "ERROR", "手动检测失败：Token 不存在")
         return RedirectResponse("/#tokens", status_code=303)
@@ -499,7 +507,7 @@ async def repair_token(
     _: str = Depends(current_user_from_cookie),
 ):
     token = db.query(TokenInstance).filter(TokenInstance.id == token_id).first()
-    watch_list = db.query(WatchList).filter(WatchList.token_id == token_id, WatchList.enabled.is_(True)).first()
+    watch_list = db.query(WatchList).filter(WatchList.token_id == 0, WatchList.enabled.is_(True)).order_by(WatchList.id.asc()).first()
     if not token or not watch_list:
         add_log(db, "ERROR", "手动修复失败：Token 或启用的 List 不存在")
         return RedirectResponse(token_anchor(token_id), status_code=303)
@@ -533,25 +541,31 @@ async def toggle_fallback(
     return RedirectResponse(token_anchor(token_id), status_code=303)
 
 
-@app.post("/tokens/{token_id}/lists")
+@app.post("/lists")
 async def save_list(
-    token_id: int,
     name: str = Form(""),
     list_id: str = Form(...),
     db: Session = Depends(get_db),
     _: str = Depends(current_user_from_cookie),
 ):
     value = extract_list_id(list_id)
-    old = db.query(WatchList).filter(WatchList.token_id == token_id, WatchList.list_id == value).first()
+    old = db.query(WatchList).filter(WatchList.token_id == 0, WatchList.list_id == value).first()
     if old:
         old.name = name.strip()
         old.enabled = True
         old.subscription_checked_at = None
         old.subscription_error = ""
+        db.query(TokenListState).filter(TokenListState.watch_list_id == old.id).update(
+            {
+                "subscription_checked_at": None,
+                "subscription_error": "",
+                "updated_at": utc_now(),
+            }
+        )
     else:
-        db.add(WatchList(token_id=token_id, name=name.strip(), list_id=value, enabled=True))
+        db.add(WatchList(token_id=0, name=name.strip(), list_id=value, enabled=True))
     add_log(db, "INFO", f"List 已保存: {value}")
-    return RedirectResponse(token_anchor(token_id), status_code=303)
+    return RedirectResponse("/#lists", status_code=303)
 
 
 @app.post("/lists/{list_id}/toggle")
@@ -561,10 +575,9 @@ async def toggle_list(
     _: str = Depends(current_user_from_cookie),
 ):
     item = db.query(WatchList).filter(WatchList.id == list_id).first()
-    redirect_url = "/#tokens"
+    redirect_url = "/#lists"
     if item:
         item.enabled = not item.enabled
-        redirect_url = token_anchor(item.token_id)
     return RedirectResponse(redirect_url, status_code=303)
 
 
@@ -575,9 +588,9 @@ async def delete_list(
     _: str = Depends(current_user_from_cookie),
 ):
     item = db.query(WatchList).filter(WatchList.id == list_id).first()
-    redirect_url = "/#tokens"
+    redirect_url = "/#lists"
     if item:
-        redirect_url = token_anchor(item.token_id)
+        db.query(TokenListState).filter(TokenListState.watch_list_id == item.id).delete()
         db.delete(item)
     return RedirectResponse(redirect_url, status_code=303)
 

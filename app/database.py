@@ -76,6 +76,19 @@ class WatchList(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
 
 
+class TokenListState(Base):
+    __tablename__ = "token_list_states"
+    __table_args__ = (UniqueConstraint("token_id", "watch_list_id", name="uq_token_list_state"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    token_id = Column(Integer, nullable=False, index=True)
+    watch_list_id = Column(Integer, nullable=False, index=True)
+    subscription_checked_at = Column(DateTime(timezone=True), nullable=True)
+    subscription_error = Column(Text, nullable=False, default="")
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
 class SeenItem(Base):
     __tablename__ = "seen_items"
 
@@ -141,6 +154,17 @@ def ensure_schema_migrations() -> None:
             conn.exec_driver_sql("ALTER TABLE watch_lists ADD COLUMN subscription_checked_at DATETIME")
         if "subscription_error" not in list_columns:
             conn.exec_driver_sql("ALTER TABLE watch_lists ADD COLUMN subscription_error TEXT NOT NULL DEFAULT ''")
+        conn.exec_driver_sql(
+            """
+            DELETE FROM watch_lists
+            WHERE id NOT IN (
+                SELECT MIN(id)
+                FROM watch_lists
+                GROUP BY list_id
+            )
+            """
+        )
+        conn.exec_driver_sql("UPDATE watch_lists SET token_id = 0 WHERE token_id != 0")
 
 
 def get_db() -> Iterator[Session]:

@@ -7,7 +7,10 @@ services:
       - .env
     volumes:
       - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
+    environment:
+      DOCKER_NETWORK: tuite-tg_default
 
   # 示例：每个 RSSHub 实例绑定一个 token 和一个代理。
   # 实际使用时复制 rsshub1 到 rsshub10，并修改端口、token、代理。

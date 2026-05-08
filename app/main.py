@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from . import auth
 from .database import (
     Log,
+    RsshubInstance,
     SeenItem,
     Setting,
     TokenListState,
@@ -29,6 +30,13 @@ from .database import (
     session_scope,
     set_setting,
     utc_now,
+)
+from .docker_manager import (
+    DockerManagerError,
+    create_rsshub_container,
+    docker_available,
+    inspect_container,
+    remove_container,
 )
 from .notifier import format_alert, send_telegram
 from .watcher import attempt_graphql_repair, snapshot_list, snapshot_token, watcher
@@ -87,6 +95,19 @@ USER_ALIAS_EXPORT_FIELDS = [
     "created_at",
     "updated_at",
 ]
+RSSHUB_EXPORT_FIELDS = [
+    "id",
+    "name",
+    "host_port",
+    "internal_url",
+    "twitter_auth_token",
+    "third_party_api",
+    "proxy_uri",
+    "container_id",
+    "status",
+    "created_at",
+    "updated_at",
+]
 PROTECTED_IMPORT_SETTINGS = {"admin_username", "admin_password_hash"}
 templates.env.filters["beijing_time"] = lambda value: format_beijing_time(value)
 
@@ -118,7 +139,28 @@ def ensure_defaults() -> None:
         for key, value in defaults.items():
             if not get_setting(db, key, ""):
                 set_setting(db, key, value)
+        ensure_default_rsshub_rows(db)
         add_log(db, "INFO", "Tuite TG 已启动")
+
+
+def ensure_default_rsshub_rows(db: Session) -> None:
+    defaults = [
+        ("rsshub1", 1201),
+        ("rsshub2", 1202),
+    ]
+    for name, host_port in defaults:
+        exists = db.query(RsshubInstance).filter(RsshubInstance.name == name).first()
+        if not exists:
+            db.add(
+                RsshubInstance(
+                    name=name,
+                    host_port=host_port,
+                    internal_url=f"http://{name}:1200",
+                    status="compose",
+                    created_at=utc_now(),
+                    updated_at=utc_now(),
+                )
+            )
 
 
 def wants_html(request: Request) -> bool:
@@ -163,6 +205,7 @@ async def index(
         return RedirectResponse("/login", status_code=303)
     tokens = db.query(TokenInstance).order_by(TokenInstance.id.asc()).all()
     lists = db.query(WatchList).filter(WatchList.token_id == 0).order_by(WatchList.id.asc()).all()
+    rsshub_instances = db.query(RsshubInstance).order_by(RsshubInstance.host_port.asc()).all()
     aliases = db.query(UserAlias).order_by(UserAlias.username.asc()).all()
     logs = db.query(Log).order_by(Log.id.desc()).limit(120).all()
     settings = {
@@ -180,6 +223,7 @@ async def index(
         "unchecked_tokens": sum(1 for token in tokens if token.enabled and not token.last_checked_at and not token.last_success_at and not token.last_error),
         "total_lists": len(lists),
         "enabled_lists": sum(1 for item in lists if item.enabled),
+        "total_rsshub": len(rsshub_instances),
         "last_checked_at": last_checked,
         "telegram_ready": bool(settings["telegram_bot_token"] and settings["telegram_chat_id"]),
     }
@@ -189,6 +233,8 @@ async def index(
             "request": request,
             "tokens": tokens,
             "lists": lists,
+            "rsshub_instances": rsshub_instances,
+            "docker_available": docker_available(),
             "logs": logs,
             "settings": settings,
             "stats": stats,
@@ -284,6 +330,10 @@ async def export_data(
             serialize_row(item, LIST_EXPORT_FIELDS)
             for item in db.query(WatchList).order_by(WatchList.id.asc()).all()
         ],
+        "rsshub_instances": [
+            serialize_row(item, RSSHUB_EXPORT_FIELDS)
+            for item in db.query(RsshubInstance).order_by(RsshubInstance.id.asc()).all()
+        ],
         "seen_items": [
             serialize_row(item, SEEN_EXPORT_FIELDS)
             for item in db.query(SeenItem).order_by(SeenItem.id.asc()).all()
@@ -325,6 +375,7 @@ async def import_data(
         db.query(TokenListState).delete()
         db.query(SeenItem).delete()
         db.query(WatchList).delete()
+        db.query(RsshubInstance).delete()
         db.query(TokenInstance).delete()
         db.query(UserAlias).delete()
 
@@ -349,6 +400,12 @@ async def import_data(
 
         for item in payload.get("seen_items", []):
             db.add(SeenItem(**clean_payload(item, SEEN_EXPORT_FIELDS)))
+
+        for item in payload.get("rsshub_instances", []):
+            clean = clean_payload(item, RSSHUB_EXPORT_FIELDS)
+            clean["container_id"] = ""
+            clean["status"] = "imported"
+            db.add(RsshubInstance(**clean))
 
         for item in payload.get("user_aliases", []):
             db.add(UserAlias(**clean_payload(item, USER_ALIAS_EXPORT_FIELDS)))
@@ -541,6 +598,104 @@ async def toggle_fallback(
     return RedirectResponse(token_anchor(token_id), status_code=303)
 
 
+@app.post("/rsshub")
+async def create_rsshub(
+    name: str = Form(...),
+    host_port: int = Form(...),
+    twitter_auth_token: str = Form(""),
+    third_party_api: str = Form(""),
+    proxy_uri: str = Form(""),
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    clean_name = sanitize_container_name(name)
+    if not clean_name:
+        add_log(db, "ERROR", "RSSHub 创建失败：名称不能为空")
+        return RedirectResponse("/#rsshub", status_code=303)
+    if host_port < 1 or host_port > 65535:
+        add_log(db, "ERROR", "RSSHub 创建失败：端口必须在 1-65535 之间")
+        return RedirectResponse("/#rsshub", status_code=303)
+    exists = (
+        db.query(RsshubInstance)
+        .filter((RsshubInstance.name == clean_name) | (RsshubInstance.host_port == host_port))
+        .first()
+    )
+    if exists:
+        add_log(db, "ERROR", "RSSHub 创建失败：名称或端口已存在")
+        return RedirectResponse("/#rsshub", status_code=303)
+    try:
+        info = create_rsshub_container(
+            clean_name,
+            host_port,
+            twitter_auth_token.strip(),
+            third_party_api.strip(),
+            proxy_uri.strip(),
+        )
+        status = info.status
+        container_id = info.container_id
+        add_log(db, "INFO", f"RSSHub 容器已创建: {clean_name}，Token 里填写 http://{clean_name}:1200")
+    except DockerManagerError as exc:
+        status = "create_failed"
+        container_id = ""
+        add_log(db, "ERROR", f"RSSHub 容器创建失败: {exc}")
+    db.add(
+        RsshubInstance(
+            name=clean_name,
+            host_port=host_port,
+            internal_url=f"http://{clean_name}:1200",
+            twitter_auth_token=twitter_auth_token.strip(),
+            third_party_api=third_party_api.strip(),
+            proxy_uri=proxy_uri.strip(),
+            container_id=container_id,
+            status=status,
+            created_at=utc_now(),
+            updated_at=utc_now(),
+        )
+    )
+    return RedirectResponse("/#rsshub", status_code=303)
+
+
+@app.post("/rsshub/{rsshub_id}/refresh")
+async def refresh_rsshub(
+    rsshub_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    item = db.query(RsshubInstance).filter(RsshubInstance.id == rsshub_id).first()
+    if item and item.container_id:
+        try:
+            info = inspect_container(item.container_id)
+            item.status = info.status
+            item.updated_at = utc_now()
+            add_log(db, "INFO", f"RSSHub 状态已刷新: {item.name} -> {item.status}")
+        except DockerManagerError as exc:
+            item.status = "unknown"
+            item.updated_at = utc_now()
+            add_log(db, "ERROR", f"RSSHub 状态刷新失败: {exc}")
+    return RedirectResponse("/#rsshub", status_code=303)
+
+
+@app.post("/rsshub/{rsshub_id}/delete")
+async def delete_rsshub(
+    rsshub_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    item = db.query(RsshubInstance).filter(RsshubInstance.id == rsshub_id).first()
+    if item:
+        if item.status == "compose":
+            add_log(db, "ERROR", f"内置 RSSHub 服务不能从网页删除: {item.name}")
+            return RedirectResponse("/#rsshub", status_code=303)
+        if item.container_id:
+            try:
+                remove_container(item.container_id)
+                add_log(db, "INFO", f"RSSHub 容器已删除: {item.name}")
+            except DockerManagerError as exc:
+                add_log(db, "ERROR", f"RSSHub 容器删除失败: {exc}")
+        db.delete(item)
+    return RedirectResponse("/#rsshub", status_code=303)
+
+
 @app.post("/lists")
 async def save_list(
     name: str = Form(""),
@@ -636,6 +791,14 @@ def normalize_username(value: str) -> str:
         else:
             value = parts[-1] if parts else value
     return value.lower()
+
+
+def sanitize_container_name(value: str) -> str:
+    import re
+
+    value = value.strip().lower()
+    value = re.sub(r"[^a-z0-9_.-]+", "-", value)
+    return value.strip("-._")
 
 
 def serialize_row(row: object, fields: list[str]) -> dict[str, object]:

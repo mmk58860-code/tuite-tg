@@ -254,6 +254,7 @@ p {
 
 .settings-grid,
 .token-form,
+.rsshub-form,
 .backup-grid,
 .alias-form {
   display: grid;
@@ -477,6 +478,10 @@ summary {
   border-radius: 8px;
 }
 
+.rsshub-row {
+  grid-template-columns: minmax(110px, 0.8fr) minmax(180px, 1fr) minmax(170px, 1fr) 90px auto auto;
+}
+
 .logs {
   display: grid;
   gap: 8px;
@@ -554,6 +559,7 @@ summary {
   .metric-grid,
   .settings-grid,
   .token-form,
+  .rsshub-form,
   .backup-grid,
   .alias-form,
   .alias-row,

@@ -89,6 +89,22 @@ class TokenListState(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
 
 
+class RsshubInstance(Base):
+    __tablename__ = "rsshub_instances"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(120), unique=True, nullable=False, index=True)
+    host_port = Column(Integer, unique=True, nullable=False, index=True)
+    internal_url = Column(String(300), nullable=False)
+    twitter_auth_token = Column(Text, nullable=False, default="")
+    third_party_api = Column(Text, nullable=False, default="")
+    proxy_uri = Column(String(500), nullable=False, default="")
+    container_id = Column(String(120), nullable=False, default="")
+    status = Column(String(40), nullable=False, default="unknown")
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
 class SeenItem(Base):
     __tablename__ = "seen_items"
 

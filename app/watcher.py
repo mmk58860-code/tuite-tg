@@ -157,19 +157,23 @@ class Watcher:
                 )
                 db.add(seen)
                 if bootstrap:
-                    add_log(db, "INFO", f"首次启动记录历史 item: {item_id}")
+                    add_log(db, "INFO", f"首次启动记录历史推文: {item_id}")
                     continue
-                add_log(db, "INFO", f"发现新 item: {item_id}")
+                add_log(db, "INFO", f"发现新推文: {item_id}")
 
             message = format_feed_item(title, link, watch_list["name"] or watch_list["list_id"], author_label)
             try:
                 await send_telegram(bot_token, chat_id, message)
+                with session_scope() as db:
+                    add_log(db, "INFO", f"TG 推送成功: {item_id}")
                 if apprise_urls:
                     prefix = f"{author_label}\n" if author_label else ""
                     send_apprise(apprise_urls, "X List 更新", f"{prefix}{title}\n{link}")
+                    with session_scope() as db:
+                        add_log(db, "INFO", f"Apprise 推送成功: {item_id}")
             except Exception as exc:
                 with session_scope() as db:
-                    add_log(db, "ERROR", f"推送 item 失败 {item_id}: {exc}")
+                    add_log(db, "ERROR", f"推送失败 {item_id}: {exc}")
 
     async def handle_source_failure(self, token: dict, watch_list: dict, error: str) -> None:
         bot_token, chat_id, _ = read_notify_settings()

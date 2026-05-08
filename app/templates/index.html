@@ -32,6 +32,48 @@
       <p>启用中的列表数量</p>
     </article>
   </div>
+  <article class="panel stability-panel">
+    <div class="stability-head">
+      <div>
+        <h2>24小时稳定度看板</h2>
+        <p>最近 24 小时系统稳定度 <strong>{{ stability.availability }}%</strong></p>
+      </div>
+      <div class="chart-legend">
+        <span><i class="online-dot"></i>稳定</span>
+        <span><i class="offline-dot"></i>波动</span>
+      </div>
+    </div>
+    <div class="stability-chart" aria-label="最近 24 小时稳定度走势">
+      <svg viewBox="0 0 100 46" preserveAspectRatio="none" role="img">
+        <defs>
+          <linearGradient id="stability-fill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="#14b8a6" stop-opacity="0.24"></stop>
+            <stop offset="100%" stop-color="#14b8a6" stop-opacity="0.08"></stop>
+          </linearGradient>
+        </defs>
+        <polygon class="chart-fill" points="0,46 {% for point in stability.step_points %}{{ point.x }},{{ point.y }} {% endfor %}100,46"></polygon>
+        <polyline class="chart-line" points="{% for point in stability.step_points %}{{ point.x }},{{ point.y }} {% endfor %}"></polyline>
+        {% for point in stability.points %}
+          {% if point.offline %}
+            <line class="chart-wick" x1="{{ point.x }}" y1="{{ point.y }}" x2="{{ point.x }}" y2="46"></line>
+          {% endif %}
+        {% endfor %}
+      </svg>
+      <div class="chart-grid">
+        <span>100%</span>
+        <span>80%</span>
+        <span>60%</span>
+        <span>40%</span>
+        <span>20%</span>
+        <span>0%</span>
+      </div>
+    </div>
+    <div class="chart-labels">
+      {% for label in stability.labels %}
+        <span>{{ label }}</span>
+      {% endfor %}
+    </div>
+  </article>
 </section>
 
 <section class="band" id="rsshub">

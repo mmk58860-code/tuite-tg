@@ -230,6 +230,133 @@ body {
   margin: 8px 0 0;
 }
 
+.stability-panel {
+  margin-top: 18px;
+  padding: 22px 24px 18px;
+}
+
+.stability-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.stability-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stability-head h2::before {
+  content: "♥";
+  color: #f04452;
+  font-size: 18px;
+}
+
+.stability-head p {
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.stability-head p strong {
+  margin-left: 8px;
+  color: var(--text);
+  font-size: 22px;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  color: var(--muted);
+}
+
+.chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.chart-legend i {
+  width: 11px;
+  height: 11px;
+  border-radius: 4px;
+}
+
+.online-dot {
+  background: var(--brand);
+}
+
+.offline-dot {
+  background: var(--danger);
+}
+
+.stability-chart {
+  position: relative;
+  height: 230px;
+  padding-left: 46px;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 37px,
+      rgba(102, 132, 153, 0.14) 38px
+    );
+}
+
+.stability-chart svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.chart-fill {
+  fill: url("#stability-fill");
+}
+
+.chart-line {
+  fill: none;
+  stroke: var(--brand);
+  stroke-width: 0.42;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart-wick {
+  stroke: rgba(244, 68, 82, 0.34);
+  stroke-width: 0.22;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart-grid {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: grid;
+  width: 42px;
+  grid-template-rows: repeat(6, 1fr);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.chart-grid span {
+  transform: translateY(-7px);
+}
+
+.chart-labels {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  padding-left: 46px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.chart-labels span:last-child {
+  text-align: right;
+}
+
 .section-head {
   display: flex;
   justify-content: space-between;

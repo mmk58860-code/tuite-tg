@@ -216,6 +216,12 @@ async def index(
     rsshub_instances = db.query(RsshubInstance).order_by(RsshubInstance.host_port.asc()).all()
     aliases = db.query(UserAlias).order_by(UserAlias.username.asc()).all()
     logs = db.query(Log).order_by(Log.id.desc()).limit(120).all()
+    stability_logs = (
+        db.query(Log)
+        .filter(Log.created_at >= utc_now() - timedelta(hours=24))
+        .order_by(Log.created_at.asc())
+        .all()
+    )
     settings = {
         "telegram_bot_token": get_setting(db, "telegram_bot_token", ""),
         "telegram_chat_id": get_setting(db, "telegram_chat_id", ""),
@@ -246,6 +252,7 @@ async def index(
             "logs": logs,
             "settings": settings,
             "stats": stats,
+            "stability": build_stability_chart(stability_logs),
             "aliases": aliases,
         },
     )
@@ -965,6 +972,63 @@ def parse_datetime(value: object) -> datetime | None:
 
 def beijing_now() -> datetime:
     return utc_now().astimezone(BEIJING_TZ)
+
+
+def build_stability_chart(logs: list[Log]) -> dict[str, object]:
+    now = beijing_now()
+    start = now - timedelta(hours=24)
+    slots = 24
+    chart_height = 46
+    points: list[dict[str, object]] = []
+    step_points: list[dict[str, object]] = []
+    total_score = 0
+
+    for index in range(slots):
+        slot_start = start + timedelta(hours=index)
+        slot_end = slot_start + timedelta(hours=1)
+        slot_logs = [
+            log for log in logs
+            if slot_start <= ensure_beijing(log.created_at) < slot_end
+        ]
+        errors = sum(1 for log in slot_logs if log.level.upper() == "ERROR")
+        warnings = sum(1 for log in slot_logs if log.level.upper() == "WARNING")
+        score = max(0, 100 - errors * 18 - warnings * 8)
+        total_score += score
+        x = round(index * (100 / (slots - 1)), 2)
+        y = round((100 - score) * (chart_height / 100), 2)
+        points.append(
+            {
+                "x": x,
+                "y": y,
+                "score": score,
+                "label": slot_start.strftime("%H:%M"),
+                "offline": score < 95,
+            }
+        )
+        if not step_points:
+            step_points.append({"x": x, "y": y})
+        else:
+            previous_y = step_points[-1]["y"]
+            step_points.append({"x": x, "y": previous_y})
+            step_points.append({"x": x, "y": y})
+
+    average = round(total_score / slots, 2) if slots else 100
+    return {
+        "availability": average,
+        "points": points,
+        "step_points": step_points,
+        "labels": [
+            points[index]["label"]
+            for index in (0, 4, 8, 12, 16, 20, 23)
+            if index < len(points)
+        ],
+    }
+
+
+def ensure_beijing(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(BEIJING_TZ)
 
 
 def format_beijing_time(value: object) -> str:

@@ -68,6 +68,37 @@
           event.preventDefault();
         }
       });
+
+      const navLinks = Array.from(document.querySelectorAll(".side-nav a[href^='#']"));
+      const navTargets = navLinks
+        .map((link) => document.querySelector(link.getAttribute("href")))
+        .filter(Boolean);
+
+      function setActiveNav(id) {
+        navLinks.forEach((link) => {
+          link.classList.toggle("active", link.getAttribute("href") === "#" + id);
+        });
+      }
+
+      navLinks.forEach((link) => {
+        link.addEventListener("click", function () {
+          const id = this.getAttribute("href").slice(1);
+          setActiveNav(id);
+        });
+      });
+
+      window.addEventListener("scroll", function () {
+        let current = navTargets[0];
+        const offset = 130;
+        for (const target of navTargets) {
+          if (target.getBoundingClientRect().top <= offset) {
+            current = target;
+          }
+        }
+        if (current) {
+          setActiveNav(current.id);
+        }
+      }, { passive: true });
     </script>
   </body>
 </html>

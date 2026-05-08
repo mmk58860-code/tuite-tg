@@ -16,6 +16,16 @@ class ContainerInfo:
     status: str
 
 
+@dataclass
+class RsshubContainer:
+    container_id: str
+    name: str
+    status: str
+    host_port: int
+    internal_url: str
+    managed: bool
+
+
 DOCKER_SOCKET = os.getenv("DOCKER_SOCKET", "/var/run/docker.sock")
 DOCKER_NETWORK = os.getenv("DOCKER_NETWORK", "tuite-tg_default")
 RSSHUB_IMAGE = os.getenv("MANAGED_RSSHUB_IMAGE", "diygod/rsshub:latest")
@@ -104,3 +114,56 @@ def inspect_container(container_id: str) -> ContainerInfo:
         container_id=container_id,
         status=str(data.get("State", {}).get("Status", "unknown")),
     )
+
+
+def list_rsshub_containers() -> list[RsshubContainer]:
+    resp = _request("GET", "/containers/json?all=true")
+    containers = resp.json()
+    results: list[RsshubContainer] = []
+    for item in containers:
+        labels = item.get("Labels") or {}
+        names = [str(name).strip("/") for name in item.get("Names") or []]
+        primary_name = names[0] if names else str(item.get("Id", ""))[:12]
+        normalized_name = normalize_compose_name(primary_name)
+        managed = labels.get("tuite-tg-rsshub") == "true"
+        status = "compose" if is_compose_rsshub_name(primary_name) and not managed else str(item.get("State", "unknown"))
+        image = str(item.get("Image", ""))
+        is_rsshub = (
+            labels.get("tuite-tg-rsshub") == "true"
+            or "rsshub" in primary_name.lower()
+            or "rsshub" in image.lower()
+        )
+        if not is_rsshub:
+            continue
+        port = extract_host_port(item.get("Ports") or [])
+        results.append(
+            RsshubContainer(
+                container_id=str(item.get("Id", "")),
+                name=normalized_name,
+                status=status,
+                host_port=port,
+                internal_url=f"http://{normalized_name}:1200",
+                managed=managed,
+            )
+        )
+    return sorted(results, key=lambda row: (row.host_port or 99999, row.name))
+
+
+def extract_host_port(ports: list[dict]) -> int:
+    for port in ports:
+        if int(port.get("PrivatePort") or 0) != 1200:
+            continue
+        public_port = port.get("PublicPort")
+        if public_port:
+            return int(public_port)
+    return 0
+
+
+def normalize_compose_name(name: str) -> str:
+    if name.startswith("tuite-tg-") and name.endswith("-1"):
+        return name.removeprefix("tuite-tg-").removesuffix("-1")
+    return name
+
+
+def is_compose_rsshub_name(name: str) -> bool:
+    return name.startswith("tuite-tg-rsshub") and name.endswith("-1")

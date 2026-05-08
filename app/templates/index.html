@@ -76,6 +76,9 @@
       <h2>RSSHub 容器</h2>
       <p>新增后会创建 RSSHub 容器；Token 里的 RSSHub 地址填写内网地址，例如 http://rsshub3:1200。</p>
     </div>
+    <form method="post" action="/rsshub/discover">
+      <button type="submit" class="secondary">查询当前 RSSHub 容器</button>
+    </form>
   </div>
   {% if not docker_available %}
     <div class="panel error-text">
@@ -109,16 +112,16 @@
         <code>{{ item.internal_url }}</code>
         <span>宿主机 127.0.0.1:{{ item.host_port }}</span>
         <span>{{ item.status }}</span>
-        {% if item.container_id %}
+        {% if item.status == 'compose' %}
+          <span class="muted">内置服务</span>
+          <span class="muted">不可删除</span>
+        {% elif item.container_id %}
           <form method="post" action="/rsshub/{{ item.id }}/refresh">
             <button type="submit" class="secondary">刷新状态</button>
           </form>
           <form method="post" action="/rsshub/{{ item.id }}/delete" data-confirm="确认删除 RSSHub 容器：{{ item.name }} 吗？">
             <button type="submit" class="danger">删除</button>
           </form>
-        {% elif item.status == 'compose' %}
-          <span class="muted">内置服务</span>
-          <span class="muted">不可删除</span>
         {% else %}
           <span class="muted">未创建</span>
           <form method="post" action="/rsshub/{{ item.id }}/delete" data-confirm="确认删除 RSSHub 记录：{{ item.name }} 吗？">
@@ -127,7 +130,7 @@
         {% endif %}
       </div>
     {% else %}
-      <p class="muted">暂无网页管理的 RSSHub 容器。已有 compose 里的 rsshub1/rsshub2 仍可手动填写使用。</p>
+      <p class="muted">暂无记录。点击“查询当前 RSSHub 容器”可以扫描当前 Docker 里已有的 RSSHub。</p>
     {% endfor %}
   </div>
 </section>

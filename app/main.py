@@ -36,6 +36,7 @@ from .docker_manager import (
     create_rsshub_container,
     docker_available,
     inspect_container,
+    list_rsshub_containers,
     remove_container,
 )
 from .notifier import format_alert, send_telegram
@@ -652,6 +653,47 @@ async def create_rsshub(
             updated_at=utc_now(),
         )
     )
+    return RedirectResponse("/#rsshub", status_code=303)
+
+
+@app.post("/rsshub/discover")
+async def discover_rsshub(
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    try:
+        containers = list_rsshub_containers()
+    except DockerManagerError as exc:
+        add_log(db, "ERROR", f"RSSHub 查询失败: {exc}")
+        return RedirectResponse("/#rsshub", status_code=303)
+
+    now = utc_now()
+    for container in containers:
+        if not container.name or not container.host_port:
+            continue
+        row = db.query(RsshubInstance).filter(RsshubInstance.name == container.name).first()
+        if not row:
+            row = db.query(RsshubInstance).filter(RsshubInstance.host_port == container.host_port).first()
+        if row:
+            row.name = container.name
+            row.host_port = container.host_port
+            row.internal_url = container.internal_url
+            row.container_id = container.container_id
+            row.status = container.status
+            row.updated_at = now
+        else:
+            db.add(
+                RsshubInstance(
+                    name=container.name,
+                    host_port=container.host_port,
+                    internal_url=container.internal_url,
+                    container_id=container.container_id,
+                    status=container.status,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+    add_log(db, "INFO", f"RSSHub 查询完成：当前发现 {len(containers)} 个容器")
     return RedirectResponse("/#rsshub", status_code=303)
 
 

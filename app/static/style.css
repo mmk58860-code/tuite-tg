@@ -193,6 +193,10 @@ body {
   display: block;
 }
 
+.band.is-active + .band.is-active {
+  margin-top: 24px;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

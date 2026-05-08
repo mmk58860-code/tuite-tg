@@ -19,10 +19,8 @@
 
         <nav class="side-nav" aria-label="主菜单">
           <a class="active" href="#dashboard" data-title="系统运行看板" data-subtitle="多 Token 轮询、健康检测与 Telegram 推送后台"><span>▣</span>运行看板</a>
-          <a href="#tokens-list" data-title="Token 实例" data-subtitle="管理小号、RSSHub 地址、代理和抓取方式"><span>◎</span>Token 实例</a>
-          <a href="#rsshub" data-title="RSSHub 容器" data-subtitle="管理 RSSHub 容器、代理和真实抓取测试"><span>◫</span>RSSHub 容器</a>
-          <a href="#lists" data-title="监控 List" data-subtitle="统一配置多个 List，所有启用 Token 会轮流监控"><span>☷</span>监控 List</a>
-          <a href="#aliases" data-title="用户备注" data-subtitle="命中指定用户时按备注和用户名推送到 Telegram"><span>＠</span>用户备注</a>
+          <a href="#token-config" data-panels="rsshub,tokens-list" data-title="Token配置" data-subtitle="先配置 RSSHub 容器，再管理 Token、小号代理和抓取方式"><span>◎</span>Token配置</a>
+          <a href="#monitor-list" data-panels="lists,aliases" data-title="监控名单" data-subtitle="统一配置监控 List 和用户备注，命中后推送到 Telegram"><span>☷</span>监控名单</a>
           <a href="#settings" data-title="系统设置" data-subtitle="配置 Telegram、轮询频率和通知扩展"><span>⚙</span>系统设置</a>
           <a href="#logs" data-title="运行日志" data-subtitle="查看最近事件、异常、修复结果和推送状态"><span>≡</span>运行日志</a>
         </nav>
@@ -96,8 +94,14 @@
       });
 
       const navLinks = Array.from(document.querySelectorAll(".side-nav a[href^='#']"));
-      const navTargets = navLinks
-        .map((link) => document.querySelector(link.getAttribute("href")))
+      function getLinkPanelIds(link) {
+        return (link.dataset.panels || link.getAttribute("href").slice(1))
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean);
+      }
+      const navTargets = Array.from(new Set(navLinks.flatMap(getLinkPanelIds)))
+        .map((id) => document.getElementById(id))
         .filter(Boolean);
       const pageTitle = document.querySelector(".page-top h1");
       const pageSubtitle = document.querySelector(".page-top p");
@@ -109,16 +113,21 @@
       }
 
       function showPanel(id, shouldUpdateHash) {
-        const target = document.getElementById(id) || document.getElementById("dashboard");
-        if (!target) {
+        const activeLink = navLinks.find((link) => {
+          const linkId = link.getAttribute("href").slice(1);
+          return linkId === id || getLinkPanelIds(link).includes(id);
+        }) || navLinks[0];
+        const activeId = activeLink.getAttribute("href").slice(1);
+        const panelIds = getLinkPanelIds(activeLink);
+        const hasTarget = panelIds.some((panelId) => document.getElementById(panelId));
+        if (!hasTarget) {
           return;
         }
         navTargets.forEach((panel) => {
-          panel.classList.toggle("is-active", panel.id === target.id);
+          panel.classList.toggle("is-active", panelIds.includes(panel.id));
         });
-        setActiveNav(target.id);
+        setActiveNav(activeId);
 
-        const activeLink = navLinks.find((link) => link.getAttribute("href") === "#" + target.id);
         if (activeLink) {
           if (pageTitle) {
             pageTitle.textContent = activeLink.dataset.title || activeLink.textContent.trim();
@@ -128,7 +137,7 @@
           }
         }
         if (shouldUpdateHash) {
-          history.replaceState(null, "", "#" + target.id);
+          history.replaceState(null, "", "#" + activeId);
           window.scrollTo({ top: 0, behavior: "smooth" });
         }
       }

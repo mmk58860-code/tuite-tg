@@ -763,7 +763,17 @@ summary {
   border-radius: 8px;
 }
 
+.test-message {
+  display: block;
+  max-height: 150px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .rsshub-test small {
+  display: block;
+  margin-top: 6px;
   color: var(--muted);
 }
 

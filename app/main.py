@@ -36,6 +36,7 @@ from .database import (
 )
 from .docker_manager import (
     DockerManagerError,
+    container_logs,
     create_rsshub_container,
     docker_available,
     inspect_container,
@@ -735,6 +736,10 @@ async def test_rsshub(
         return RedirectResponse("/#rsshub", status_code=303)
 
     ok, message = await run_rsshub_real_fetch_test(item.internal_url, watch_list.list_id)
+    if not ok and item.container_id:
+        log_summary = summarize_rsshub_logs(container_logs(item.container_id))
+        if log_summary:
+            message = f"{message}\n日志摘要：{log_summary}"
     item.last_test_at = utc_now()
     item.last_test_ok = ok
     item.last_test_message = message
@@ -936,6 +941,35 @@ async def run_rsshub_real_fetch_test(base_url: str, list_id: str) -> tuple[bool,
     if parsed.bozo:
         return False, f"RSS 解析失败：{parsed.bozo_exception}"
     return True, f"测试成功，List {list_id} 返回 {len(parsed.entries)} 条。"
+
+
+def summarize_rsshub_logs(logs: str) -> str:
+    if not logs.strip():
+        return ""
+    keywords = (
+        "Error in /twitter/list",
+        "Twitter API error",
+        "PROXY_URI",
+        "proxy",
+        "403",
+        "404",
+        "503",
+        "ECONN",
+        "ETIMEDOUT",
+        "timeout",
+        "Proxy",
+        "Playwright",
+    )
+    lines = []
+    for raw_line in logs.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if any(keyword in line for keyword in keywords):
+            lines.append(line)
+    if not lines:
+        lines = [line.strip() for line in logs.splitlines() if line.strip()][-8:]
+    return " | ".join(lines[-8:])[:1200]
 
 
 def serialize_row(row: object, fields: list[str]) -> dict[str, object]:

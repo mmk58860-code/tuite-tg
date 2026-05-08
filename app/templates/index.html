@@ -133,7 +133,7 @@
         </div>
         <div class="rsshub-test span-4">
           <span>测试结果</span>
-          <b class="{{ 'ok-text' if item.last_test_ok else 'warn-text' }}">
+          <b class="test-message {{ 'ok-text' if item.last_test_ok else 'warn-text' }}">
             {{ item.last_test_message or '未测试' }}
           </b>
           <small>测试时间：{{ item.last_test_at | beijing_time }}</small>

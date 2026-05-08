@@ -142,6 +142,19 @@ def inspect_container(container_id: str) -> ContainerInfo:
     )
 
 
+def container_logs(container_id: str, tail: int = 120) -> str:
+    if not container_id:
+        return ""
+    try:
+        resp = _request(
+            "GET",
+            f"/containers/{container_id}/logs?stdout=true&stderr=true&tail={tail}&timestamps=false",
+        )
+    except DockerManagerError as exc:
+        return f"读取容器日志失败：{exc}"
+    return decode_docker_log(resp.content)
+
+
 def list_rsshub_containers() -> list[RsshubContainer]:
     resp = _request("GET", "/containers/json?all=true")
     containers = resp.json()
@@ -189,3 +202,20 @@ def normalize_compose_name(name: str) -> str:
     if name.startswith("tuite-tg-") and name.endswith("-1"):
         return name.removeprefix("tuite-tg-").removesuffix("-1")
     return name
+
+
+def decode_docker_log(content: bytes) -> str:
+    if not content:
+        return ""
+    output = bytearray()
+    i = 0
+    size = len(content)
+    while i + 8 <= size:
+        frame_size = int.from_bytes(content[i + 4 : i + 8], "big")
+        if frame_size <= 0 or i + 8 + frame_size > size:
+            break
+        output.extend(content[i + 8 : i + 8 + frame_size])
+        i += 8 + frame_size
+    if not output:
+        output.extend(content)
+    return output.decode("utf-8", errors="replace")

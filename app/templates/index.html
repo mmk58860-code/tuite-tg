@@ -154,7 +154,14 @@
               <input name="third_party_api" value="{{ item.third_party_api }}" autocomplete="off" placeholder="可选">
             </label>
             <label class="span-2">RSSHub 代理
-              <input name="proxy_uri" value="{{ item.proxy_uri }}" placeholder="socks5://用户:密码@IP:端口 或 http://用户:密码@IP:端口">
+              <select name="proxy_uri">
+                <option value="">不使用代理</option>
+                {% for proxy in proxies %}
+                  <option value="{{ proxy.proxy_url }}" {% if item.proxy_uri == proxy.proxy_url %}selected{% endif %}>
+                    {{ proxy.name }} - {{ proxy.proxy_url }}{% if not proxy.enabled %}（停用）{% elif proxy.last_test_ok %}（已检测）{% else %}（未检测）{% endif %}
+                  </option>
+                {% endfor %}
+              </select>
             </label>
             <div class="actions span-2">
               <button type="submit">保存并重建</button>
@@ -183,7 +190,14 @@
         <input name="third_party_api" autocomplete="off" placeholder="可选">
       </label>
       <label class="span-2">RSSHub 代理
-        <input name="proxy_uri" placeholder="socks5://用户:密码@IP:端口 或 http://用户:密码@IP:端口">
+        <select name="proxy_uri">
+          <option value="">不使用代理</option>
+          {% for proxy in proxies %}
+            <option value="{{ proxy.proxy_url }}">
+              {{ proxy.name }} - {{ proxy.proxy_url }}{% if not proxy.enabled %}（停用）{% elif proxy.last_test_ok %}（已检测）{% else %}（未检测）{% endif %}
+            </option>
+          {% endfor %}
+        </select>
       </label>
       <div class="actions span-2">
         <button type="submit">新增 RSSHub</button>
@@ -210,7 +224,14 @@
         <input name="rsshub_url" required placeholder="http://rsshub1:1200">
       </label>
       <label>代理
-        <input name="proxy_url" placeholder="socks5://127.0.0.1:1080">
+        <select name="proxy_url">
+          <option value="">不使用代理</option>
+          {% for proxy in proxies %}
+            <option value="{{ proxy.proxy_url }}">
+              {{ proxy.name }} - {{ proxy.proxy_url }}{% if not proxy.enabled %}（停用）{% elif proxy.last_test_ok %}（已检测）{% else %}（未检测）{% endif %}
+            </option>
+          {% endfor %}
+        </select>
       </label>
       <label class="check">
         <input name="enabled" type="checkbox" checked>
@@ -284,7 +305,14 @@
           <input name="rsshub_url" value="{{ token.rsshub_url }}" required>
         </label>
         <label>代理
-          <input name="proxy_url" value="{{ token.proxy_url }}">
+          <select name="proxy_url">
+            <option value="">不使用代理</option>
+            {% for proxy in proxies %}
+              <option value="{{ proxy.proxy_url }}" {% if token.proxy_url == proxy.proxy_url %}selected{% endif %}>
+                {{ proxy.name }} - {{ proxy.proxy_url }}{% if not proxy.enabled %}（停用）{% elif proxy.last_test_ok %}（已检测）{% else %}（未检测）{% endif %}
+              </option>
+            {% endfor %}
+          </select>
         </label>
         <label class="check">
           <input name="enabled" type="checkbox" {% if token.enabled %}checked{% endif %}>
@@ -379,6 +407,91 @@
       </div>
     {% else %}
       <p class="muted">暂无用户备注。</p>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="band" id="proxies">
+  <div class="section-head">
+    <div>
+      <h2>代理设置</h2>
+      <p>统一维护代理池；Token 和 RSSHub 只能选择这里已启用的代理。</p>
+    </div>
+    <form method="post" action="/proxies/test-all" data-confirm="确认批量检测所有代理吗？">
+      <button type="submit" class="secondary">批量检测代理</button>
+    </form>
+  </div>
+
+  <details class="panel compact-details add-panel">
+    <summary>新增代理</summary>
+    <form class="proxy-form" method="post" action="/proxies">
+      <label>代理名称
+        <input name="name" required placeholder="proxy-1">
+      </label>
+      <label class="span-2">代理地址
+        <input name="proxy_url" required placeholder="socks5://用户:密码@IP:端口 或 http://用户:密码@IP:端口">
+      </label>
+      <label class="check">
+        <input name="enabled" type="checkbox" checked>
+        <span>启用</span>
+      </label>
+      <div class="actions span-2">
+        <button type="submit">保存代理</button>
+      </div>
+    </form>
+  </details>
+
+  <div class="panel proxy-list">
+    {% for proxy in proxies %}
+      <div class="proxy-row">
+        <div>
+          <strong>{{ proxy.name }}</strong>
+          <code>{{ proxy.proxy_url }}</code>
+        </div>
+        <div>
+          <span>状态</span>
+          <p>
+            <span class="badge {{ 'ok' if proxy.enabled else 'muted' }}">{{ '启用' if proxy.enabled else '停用' }}</span>
+            <span class="badge {{ 'ok' if proxy.last_test_ok else 'warn' }}">{{ '检测通过' if proxy.last_test_ok else '未通过/未检测' }}</span>
+          </p>
+        </div>
+        <div class="actions">
+          <form method="post" action="/proxies/{{ proxy.id }}/test">
+            <button class="secondary" type="submit">检测代理</button>
+          </form>
+          <form method="post" action="/proxies/{{ proxy.id }}/delete" data-confirm="确认删除代理：{{ proxy.name }} 吗？正在使用的代理不会被删除。">
+            <button class="danger" type="submit">删除</button>
+          </form>
+        </div>
+        <div class="rsshub-test span-3">
+          <span>检测结果</span>
+          <b class="test-message {{ 'ok-text' if proxy.last_test_ok else 'warn-text' }}">
+            {{ proxy.last_test_message or '未检测' }}
+          </b>
+          <small>检测时间：{{ proxy.last_test_at | beijing_time }}</small>
+        </div>
+        <details class="span-3">
+          <summary>编辑代理</summary>
+          <form class="proxy-form edit-form" method="post" action="/proxies">
+            <input type="hidden" name="proxy_id" value="{{ proxy.id }}">
+            <label>代理名称
+              <input name="name" value="{{ proxy.name }}" required>
+            </label>
+            <label class="span-2">代理地址
+              <input name="proxy_url" value="{{ proxy.proxy_url }}" required>
+            </label>
+            <label class="check">
+              <input name="enabled" type="checkbox" {% if proxy.enabled %}checked{% endif %}>
+              <span>启用</span>
+            </label>
+            <div class="actions span-2">
+              <button type="submit">保存修改</button>
+            </div>
+          </form>
+        </details>
+      </div>
+    {% else %}
+      <p class="muted">暂无代理。先新增代理并检测通过，再到 Token/RSSHub 里选择使用。</p>
     {% endfor %}
   </div>
 </section>

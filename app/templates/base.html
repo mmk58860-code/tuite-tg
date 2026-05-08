@@ -19,8 +19,9 @@
 
         <nav class="side-nav" aria-label="主菜单">
           <a class="active" href="#dashboard" data-title="系统运行看板" data-subtitle="多 Token 轮询、健康检测与 Telegram 推送后台"><span>▣</span>运行看板</a>
-          <a href="#token-config" data-panels="rsshub,tokens-list" data-title="Token配置" data-subtitle="先配置 RSSHub 容器，再管理 Token、小号代理和抓取方式"><span>◎</span>Token配置</a>
+          <a href="#token-config" data-panels="rsshub,tokens-list" data-title="Token配置" data-subtitle="先配置 RSSHub 容器，再管理 Token 和抓取方式"><span>◎</span>Token配置</a>
           <a href="#monitor-list" data-panels="lists,aliases" data-title="监控名单" data-subtitle="统一配置监控 List 和用户备注，命中后推送到 Telegram"><span>☷</span>监控名单</a>
+          <a href="#proxies" data-title="代理设置" data-subtitle="统一维护代理池，Token 和 RSSHub 只能选择已配置代理"><span>⇄</span>代理设置</a>
           <a href="#settings" data-title="系统设置" data-subtitle="配置 Telegram、轮询频率和通知扩展"><span>⚙</span>系统设置</a>
           <a href="#logs" data-title="运行日志" data-subtitle="查看最近事件、异常、修复结果和推送状态"><span>≡</span>运行日志</a>
         </nav>
@@ -142,6 +143,16 @@
         }
       }
 
+      function showInitialPanel() {
+        const rawId = (window.location.hash || "#dashboard").slice(1);
+        const anchorTarget = document.getElementById(rawId);
+        const panelId = rawId.startsWith("token-") ? "token-config" : rawId;
+        showPanel(panelId, false);
+        if (anchorTarget && rawId !== panelId) {
+          requestAnimationFrame(() => anchorTarget.scrollIntoView({ block: "start" }));
+        }
+      }
+
       navLinks.forEach((link) => {
         link.addEventListener("click", function (event) {
           event.preventDefault();
@@ -150,7 +161,7 @@
         });
       });
 
-      showPanel((window.location.hash || "#dashboard").slice(1), false);
+      showInitialPanel();
 
       const importModal = document.getElementById("import-modal");
       const openImportButtons = document.querySelectorAll("[data-open-import]");

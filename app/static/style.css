@@ -442,6 +442,7 @@ p {
 .settings-grid,
 .token-form,
 .rsshub-form,
+.proxy-form,
 .alias-form,
 .import-form {
   display: grid;
@@ -457,6 +458,10 @@ p {
   grid-column: 1 / -1;
 }
 
+.span-3 {
+  grid-column: 1 / -1;
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -466,7 +471,8 @@ label {
 }
 
 input,
-textarea {
+textarea,
+select {
   width: 100%;
   min-height: 38px;
   border: 1px solid #cfe2e8;
@@ -478,7 +484,8 @@ textarea {
 }
 
 input:focus,
-textarea:focus {
+textarea:focus,
+select:focus {
   outline: 2px solid rgba(19, 184, 166, 0.2);
   border-color: var(--brand);
 }
@@ -713,13 +720,15 @@ summary {
   border-radius: 8px;
 }
 
-.rsshub-list {
+.rsshub-list,
+.proxy-list {
   display: grid;
   gap: 10px;
   margin-bottom: 14px;
 }
 
-.rsshub-row {
+.rsshub-row,
+.proxy-row {
   display: grid;
   grid-template-columns: minmax(220px, 1.4fr) minmax(130px, 0.7fr) minmax(88px, 0.5fr) auto;
   gap: 12px;
@@ -730,29 +739,34 @@ summary {
   border-radius: 8px;
 }
 
-.rsshub-row > div {
+.rsshub-row > div,
+.proxy-row > div {
   display: grid;
   gap: 4px;
   min-width: 0;
 }
 
-.rsshub-row > details {
+.rsshub-row > details,
+.proxy-row > details {
   margin-top: 2px;
   padding-top: 10px;
   border-top: 1px solid var(--line);
 }
 
-.rsshub-row code {
+.rsshub-row code,
+.proxy-row code {
   width: fit-content;
   max-width: 100%;
 }
 
-.rsshub-row span {
+.rsshub-row span,
+.proxy-row span {
   color: var(--muted);
   font-size: 12px;
 }
 
-.rsshub-row b {
+.rsshub-row b,
+.proxy-row b {
   font-size: 14px;
 }
 
@@ -890,11 +904,13 @@ summary {
   .settings-grid,
   .token-form,
   .rsshub-form,
+  .proxy-form,
   .alias-form,
   .import-form,
   .alias-row,
   .list-form,
   .rsshub-row,
+  .proxy-row,
   .row,
   .log {
     grid-template-columns: 1fr;
@@ -905,6 +921,10 @@ summary {
   }
 
   .span-4 {
+    grid-column: span 1;
+  }
+
+  .span-3 {
     grid-column: span 1;
   }
 }

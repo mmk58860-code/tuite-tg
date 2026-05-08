@@ -108,6 +108,20 @@ class RsshubInstance(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
 
 
+class ProxyProfile(Base):
+    __tablename__ = "proxy_profiles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(120), unique=True, nullable=False, index=True)
+    proxy_url = Column(String(500), unique=True, nullable=False, index=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+    last_test_at = Column(DateTime(timezone=True), nullable=True)
+    last_test_ok = Column(Boolean, nullable=False, default=False)
+    last_test_message = Column(Text, nullable=False, default="")
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
 class SeenItem(Base):
     __tablename__ = "seen_items"
 
@@ -195,6 +209,24 @@ def ensure_schema_migrations() -> None:
             conn.exec_driver_sql("ALTER TABLE rsshub_instances ADD COLUMN last_test_ok BOOLEAN NOT NULL DEFAULT 0")
         if "last_test_message" not in rsshub_columns:
             conn.exec_driver_sql("ALTER TABLE rsshub_instances ADD COLUMN last_test_message TEXT NOT NULL DEFAULT ''")
+
+        proxy_columns = {
+            row[1]
+            for row in conn.exec_driver_sql("PRAGMA table_info(proxy_profiles)").fetchall()
+        }
+        if proxy_columns:
+            if "enabled" not in proxy_columns:
+                conn.exec_driver_sql("ALTER TABLE proxy_profiles ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT 1")
+            if "last_test_at" not in proxy_columns:
+                conn.exec_driver_sql("ALTER TABLE proxy_profiles ADD COLUMN last_test_at DATETIME")
+            if "last_test_ok" not in proxy_columns:
+                conn.exec_driver_sql("ALTER TABLE proxy_profiles ADD COLUMN last_test_ok BOOLEAN NOT NULL DEFAULT 0")
+            if "last_test_message" not in proxy_columns:
+                conn.exec_driver_sql("ALTER TABLE proxy_profiles ADD COLUMN last_test_message TEXT NOT NULL DEFAULT ''")
+            if "created_at" not in proxy_columns:
+                conn.exec_driver_sql("ALTER TABLE proxy_profiles ADD COLUMN created_at DATETIME")
+            if "updated_at" not in proxy_columns:
+                conn.exec_driver_sql("ALTER TABLE proxy_profiles ADD COLUMN updated_at DATETIME")
 
 
 def get_db() -> Iterator[Session]:

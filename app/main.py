@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from . import auth
 from .database import (
     Log,
+    ProxyProfile,
     RsshubInstance,
     SeenItem,
     Setting,
@@ -117,6 +118,17 @@ RSSHUB_EXPORT_FIELDS = [
     "created_at",
     "updated_at",
 ]
+PROXY_EXPORT_FIELDS = [
+    "id",
+    "name",
+    "proxy_url",
+    "enabled",
+    "last_test_at",
+    "last_test_ok",
+    "last_test_message",
+    "created_at",
+    "updated_at",
+]
 PROTECTED_IMPORT_SETTINGS = {"admin_username", "admin_password_hash"}
 templates.env.filters["beijing_time"] = lambda value: format_beijing_time(value)
 
@@ -148,6 +160,7 @@ def ensure_defaults() -> None:
         for key, value in defaults.items():
             if not get_setting(db, key, ""):
                 set_setting(db, key, value)
+        migrate_existing_proxies(db)
         add_log(db, "INFO", "Tuite TG 已启动")
 
 
@@ -194,6 +207,7 @@ async def index(
     tokens = db.query(TokenInstance).order_by(TokenInstance.id.asc()).all()
     lists = db.query(WatchList).filter(WatchList.token_id == 0).order_by(WatchList.id.asc()).all()
     rsshub_instances = db.query(RsshubInstance).order_by(RsshubInstance.host_port.asc()).all()
+    proxies = db.query(ProxyProfile).order_by(ProxyProfile.id.asc()).all()
     aliases = db.query(UserAlias).order_by(UserAlias.username.asc()).all()
     logs = db.query(Log).order_by(Log.id.desc()).limit(120).all()
     stability_logs = (
@@ -228,6 +242,7 @@ async def index(
             "tokens": tokens,
             "lists": lists,
             "rsshub_instances": rsshub_instances,
+            "proxies": proxies,
             "docker_available": docker_available(),
             "logs": logs,
             "settings": settings,
@@ -329,6 +344,10 @@ async def export_data(
             serialize_row(item, RSSHUB_EXPORT_FIELDS)
             for item in db.query(RsshubInstance).order_by(RsshubInstance.id.asc()).all()
         ],
+        "proxy_profiles": [
+            serialize_row(item, PROXY_EXPORT_FIELDS)
+            for item in db.query(ProxyProfile).order_by(ProxyProfile.id.asc()).all()
+        ],
         "seen_items": [
             serialize_row(item, SEEN_EXPORT_FIELDS)
             for item in db.query(SeenItem).order_by(SeenItem.id.asc()).all()
@@ -372,6 +391,7 @@ async def import_data(
         db.query(WatchList).delete()
         db.query(RsshubInstance).delete()
         db.query(TokenInstance).delete()
+        db.query(ProxyProfile).delete()
         db.query(UserAlias).delete()
 
         for item in payload.get("settings", []):
@@ -402,8 +422,15 @@ async def import_data(
             clean["status"] = "imported"
             db.add(RsshubInstance(**clean))
 
+        for item in payload.get("proxy_profiles", []):
+            clean = clean_payload(item, PROXY_EXPORT_FIELDS)
+            if clean.get("proxy_url"):
+                db.add(ProxyProfile(**clean))
+
         for item in payload.get("user_aliases", []):
             db.add(UserAlias(**clean_payload(item, USER_ALIAS_EXPORT_FIELDS)))
+
+        migrate_existing_proxies(db)
 
         add_log(db, "INFO", "数据导入完成，已覆盖 Token、List、用户备注、系统配置和去重记录")
     except Exception as exc:
@@ -448,6 +475,128 @@ async def delete_alias(
     return RedirectResponse("/#aliases", status_code=303)
 
 
+@app.post("/proxies")
+async def save_proxy(
+    proxy_id: str = Form(""),
+    name: str = Form(...),
+    proxy_url: str = Form(...),
+    enabled: str = Form(""),
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    clean_name = name.strip()
+    clean_proxy = proxy_url.strip()
+    if not clean_name or not clean_proxy:
+        add_log(db, "ERROR", "代理保存失败：名称和代理地址不能为空")
+        return RedirectResponse("/#proxies", status_code=303)
+    if not is_supported_proxy(clean_proxy):
+        add_log(db, "ERROR", "代理保存失败：仅支持 http://、https://、socks5://、socks5h://")
+        return RedirectResponse("/#proxies", status_code=303)
+    is_enabled = enabled == "on"
+    now = utc_now()
+    exists = (
+        db.query(ProxyProfile)
+        .filter((ProxyProfile.name == clean_name) | (ProxyProfile.proxy_url == clean_proxy))
+        .first()
+    )
+    if proxy_id:
+        proxy = db.query(ProxyProfile).filter(ProxyProfile.id == int(proxy_id)).first()
+        if not proxy:
+            raise HTTPException(status_code=404, detail="Proxy not found")
+        conflict = (
+            db.query(ProxyProfile)
+            .filter(ProxyProfile.id != proxy.id)
+            .filter((ProxyProfile.name == clean_name) | (ProxyProfile.proxy_url == clean_proxy))
+            .first()
+        )
+        if conflict:
+            add_log(db, "ERROR", "代理保存失败：名称或地址已存在")
+            return RedirectResponse("/#proxies", status_code=303)
+        old_url = proxy.proxy_url
+        in_use = (
+            db.query(TokenInstance).filter(TokenInstance.proxy_url == old_url).first()
+            or db.query(RsshubInstance).filter(RsshubInstance.proxy_uri == old_url).first()
+        )
+        if in_use and (old_url != clean_proxy or not is_enabled):
+            add_log(db, "ERROR", "代理保存失败：该代理正在使用，不能改地址或停用；请先新增并检测新代理，再到 Token/RSSHub 切换。")
+            return RedirectResponse("/#proxies", status_code=303)
+        proxy.name = clean_name
+        proxy.proxy_url = clean_proxy
+        proxy.enabled = is_enabled
+        proxy.last_test_ok = False if old_url != clean_proxy else proxy.last_test_ok
+        proxy.last_test_message = "代理地址已修改，请重新检测。" if old_url != clean_proxy else proxy.last_test_message
+        proxy.updated_at = now
+    else:
+        if exists:
+            add_log(db, "ERROR", "代理保存失败：名称或地址已存在")
+            return RedirectResponse("/#proxies", status_code=303)
+        db.add(
+            ProxyProfile(
+                name=clean_name,
+                proxy_url=clean_proxy,
+                enabled=is_enabled,
+                last_test_ok=False,
+                last_test_message="已保存，尚未检测。",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    add_log(db, "INFO", f"代理配置已保存: {clean_name}")
+    return RedirectResponse("/#proxies", status_code=303)
+
+
+@app.post("/proxies/{proxy_id}/test")
+async def test_proxy(
+    proxy_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    proxy = db.query(ProxyProfile).filter(ProxyProfile.id == proxy_id).first()
+    if proxy:
+        ok, message = await run_proxy_test(proxy.proxy_url)
+        proxy.last_test_at = utc_now()
+        proxy.last_test_ok = ok
+        proxy.last_test_message = message
+        proxy.updated_at = utc_now()
+        add_log(db, "INFO" if ok else "ERROR", f"代理检测 {proxy.name}: {message}")
+    return RedirectResponse("/#proxies", status_code=303)
+
+
+@app.post("/proxies/test-all")
+async def test_all_proxies(
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    proxies = db.query(ProxyProfile).order_by(ProxyProfile.id.asc()).all()
+    for proxy in proxies:
+        ok, message = await run_proxy_test(proxy.proxy_url)
+        proxy.last_test_at = utc_now()
+        proxy.last_test_ok = ok
+        proxy.last_test_message = message
+        proxy.updated_at = utc_now()
+        add_log(db, "INFO" if ok else "ERROR", f"批量代理检测 {proxy.name}: {message}")
+    return RedirectResponse("/#proxies", status_code=303)
+
+
+@app.post("/proxies/{proxy_id}/delete")
+async def delete_proxy(
+    proxy_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    proxy = db.query(ProxyProfile).filter(ProxyProfile.id == proxy_id).first()
+    if proxy:
+        if db.query(TokenInstance).filter(TokenInstance.proxy_url == proxy.proxy_url).first():
+            add_log(db, "ERROR", f"代理删除失败：{proxy.name} 正被 Token 使用")
+            return RedirectResponse("/#proxies", status_code=303)
+        if db.query(RsshubInstance).filter(RsshubInstance.proxy_uri == proxy.proxy_url).first():
+            add_log(db, "ERROR", f"代理删除失败：{proxy.name} 正被 RSSHub 使用")
+            return RedirectResponse("/#proxies", status_code=303)
+        db.delete(proxy)
+        add_log(db, "INFO", f"代理已删除: {proxy.name}")
+    return RedirectResponse("/#proxies", status_code=303)
+
+
 @app.post("/tokens")
 async def save_token(
     token_id: str = Form(""),
@@ -463,7 +612,11 @@ async def save_token(
 ):
     now = utc_now()
     is_enabled = enabled == "on"
-    redirect_url = "/#tokens"
+    selected_proxy = resolve_proxy_choice(db, proxy_url)
+    if proxy_url and selected_proxy is None:
+        add_log(db, "ERROR", "Token 保存失败：请选择代理设置里已有且启用的代理")
+        return RedirectResponse("/#token-config", status_code=303)
+    redirect_url = "/#token-config"
     if token_id:
         token = db.query(TokenInstance).filter(TokenInstance.id == int(token_id)).first()
         if not token:
@@ -481,7 +634,7 @@ async def save_token(
             token.ct0 = ct0.strip()
         if bearer_token.strip():
             token.bearer_token = bearer_token.strip()
-        token.proxy_url = proxy_url.strip()
+        token.proxy_url = selected_proxy
         token.enabled = is_enabled
         token.updated_at = now
         if (
@@ -504,7 +657,7 @@ async def save_token(
             auth_token=auth_token.strip(),
             ct0=ct0.strip(),
             bearer_token=bearer_token.strip(),
-            proxy_url=proxy_url.strip(),
+            proxy_url=selected_proxy,
             enabled=is_enabled,
         )
         db.add(token)
@@ -526,7 +679,7 @@ async def delete_token(
         db.query(TokenListState).filter(TokenListState.token_id == token_id).delete()
         db.delete(token)
         add_log(db, "INFO", f"Token 已删除: {token_id}")
-    return RedirectResponse("/#tokens", status_code=303)
+    return RedirectResponse("/#token-config", status_code=303)
 
 
 @app.post("/tokens/{token_id}/check")
@@ -539,7 +692,7 @@ async def check_token(
     watch_list = db.query(WatchList).filter(WatchList.token_id == 0, WatchList.enabled.is_(True)).order_by(WatchList.id.asc()).first()
     if not token:
         add_log(db, "ERROR", "手动检测失败：Token 不存在")
-        return RedirectResponse("/#tokens", status_code=303)
+        return RedirectResponse("/#token-config", status_code=303)
     if not watch_list:
         token.last_checked_at = utc_now()
         token.healthy = False
@@ -610,6 +763,10 @@ async def create_rsshub(
     if host_port < 1 or host_port > 65535:
         add_log(db, "ERROR", "RSSHub 创建失败：端口必须在 1-65535 之间")
         return RedirectResponse("/#rsshub", status_code=303)
+    selected_proxy = resolve_proxy_choice(db, proxy_uri)
+    if proxy_uri and selected_proxy is None:
+        add_log(db, "ERROR", "RSSHub 创建失败：请选择代理设置里已有且启用的代理")
+        return RedirectResponse("/#rsshub", status_code=303)
     exists = (
         db.query(RsshubInstance)
         .filter((RsshubInstance.name == clean_name) | (RsshubInstance.host_port == host_port))
@@ -624,7 +781,7 @@ async def create_rsshub(
             host_port,
             twitter_auth_token.strip(),
             third_party_api.strip(),
-            proxy_uri.strip(),
+            selected_proxy,
         )
         status = info.status
         container_id = info.container_id
@@ -640,7 +797,7 @@ async def create_rsshub(
             internal_url=f"http://{clean_name}:1200",
             twitter_auth_token=twitter_auth_token.strip(),
             third_party_api=third_party_api.strip(),
-            proxy_uri=proxy_uri.strip(),
+            proxy_uri=selected_proxy,
             container_id=container_id,
             status=status,
             created_at=utc_now(),
@@ -770,6 +927,10 @@ async def update_rsshub(
     if host_port < 1 or host_port > 65535:
         add_log(db, "ERROR", "RSSHub 更新失败：端口必须在 1-65535 之间")
         return RedirectResponse("/#rsshub", status_code=303)
+    selected_proxy = resolve_proxy_choice(db, proxy_uri)
+    if proxy_uri and selected_proxy is None:
+        add_log(db, "ERROR", "RSSHub 更新失败：请选择代理设置里已有且启用的代理")
+        return RedirectResponse("/#rsshub", status_code=303)
     exists = (
         db.query(RsshubInstance)
         .filter(RsshubInstance.id != rsshub_id)
@@ -785,7 +946,7 @@ async def update_rsshub(
     item.internal_url = f"http://{clean_name}:1200"
     item.twitter_auth_token = twitter_auth_token.strip()
     item.third_party_api = third_party_api.strip()
-    item.proxy_uri = proxy_uri.strip()
+    item.proxy_uri = selected_proxy
     item.updated_at = utc_now()
     try:
         info = recreate_rsshub_container(
@@ -970,6 +1131,73 @@ def summarize_rsshub_logs(logs: str) -> str:
     if not lines:
         lines = [line.strip() for line in logs.splitlines() if line.strip()][-8:]
     return " | ".join(lines[-8:])[:1200]
+
+
+def is_supported_proxy(proxy_url: str) -> bool:
+    lowered = proxy_url.lower()
+    return lowered.startswith(("http://", "https://", "socks5://", "socks5h://"))
+
+
+def resolve_proxy_choice(db: Session, value: str) -> str | None:
+    clean = value.strip()
+    if not clean:
+        return ""
+    proxy = (
+        db.query(ProxyProfile)
+        .filter(
+            ProxyProfile.proxy_url == clean,
+            ProxyProfile.enabled.is_(True),
+            ProxyProfile.last_test_ok.is_(True),
+        )
+        .first()
+    )
+    return proxy.proxy_url if proxy else None
+
+
+async def run_proxy_test(proxy_url: str) -> tuple[bool, str]:
+    clean = proxy_url.strip()
+    if not is_supported_proxy(clean):
+        return False, "代理格式不支持，请使用 http://、https://、socks5:// 或 socks5h://"
+    transport = httpx.AsyncHTTPTransport(proxy=clean)
+    async with httpx.AsyncClient(transport=transport, timeout=25.0, follow_redirects=True) as client:
+        try:
+            x_resp = await client.get("https://abs.twimg.com/favicons/twitter.3.ico")
+            ip_resp = await client.get("https://api.ipify.org?format=json")
+        except httpx.HTTPError as exc:
+            return False, f"代理请求失败：{exc}"
+    if x_resp.status_code >= 400:
+        return False, f"代理可连接但访问 X 失败：HTTP {x_resp.status_code}"
+    ip = ""
+    try:
+        ip = str(ip_resp.json().get("ip", ""))
+    except Exception:
+        ip = ip_resp.text.strip()[:80]
+    return True, f"代理可用，X 静态资源 HTTP {x_resp.status_code}，出口 IP {ip or '未知'}"
+
+
+def migrate_existing_proxies(db: Session) -> None:
+    values = []
+    values.extend(proxy for (proxy,) in db.query(TokenInstance.proxy_url).filter(TokenInstance.proxy_url != "").all())
+    values.extend(proxy for (proxy,) in db.query(RsshubInstance.proxy_uri).filter(RsshubInstance.proxy_uri != "").all())
+    existing = {proxy.proxy_url for proxy in db.query(ProxyProfile).all()}
+    now = utc_now()
+    index = len(existing) + 1
+    for value in dict.fromkeys(values):
+        if not value or value in existing:
+            continue
+        db.add(
+            ProxyProfile(
+                name=f"imported-proxy-{index}",
+                proxy_url=value,
+                enabled=True,
+                last_test_ok=False,
+                last_test_message="从已有 Token/RSSHub 配置迁移，尚未检测。",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        existing.add(value)
+        index += 1
 
 
 def serialize_row(row: object, fields: list[str]) -> dict[str, object]:

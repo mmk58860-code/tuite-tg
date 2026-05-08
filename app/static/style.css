@@ -522,6 +522,17 @@ summary {
   font-size: 14px;
 }
 
+.rsshub-test {
+  padding: 8px 10px;
+  background: #f2fbfb;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+}
+
+.rsshub-test small {
+  color: var(--muted);
+}
+
 .logs {
   display: grid;
   gap: 8px;

@@ -101,6 +101,9 @@ class RsshubInstance(Base):
     proxy_uri = Column(String(500), nullable=False, default="")
     container_id = Column(String(120), nullable=False, default="")
     status = Column(String(40), nullable=False, default="unknown")
+    last_test_at = Column(DateTime(timezone=True), nullable=True)
+    last_test_ok = Column(Boolean, nullable=False, default=False)
+    last_test_message = Column(Text, nullable=False, default="")
     created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
 
@@ -181,6 +184,17 @@ def ensure_schema_migrations() -> None:
             """
         )
         conn.exec_driver_sql("UPDATE watch_lists SET token_id = 0 WHERE token_id != 0")
+
+        rsshub_columns = {
+            row[1]
+            for row in conn.exec_driver_sql("PRAGMA table_info(rsshub_instances)").fetchall()
+        }
+        if "last_test_at" not in rsshub_columns:
+            conn.exec_driver_sql("ALTER TABLE rsshub_instances ADD COLUMN last_test_at DATETIME")
+        if "last_test_ok" not in rsshub_columns:
+            conn.exec_driver_sql("ALTER TABLE rsshub_instances ADD COLUMN last_test_ok BOOLEAN NOT NULL DEFAULT 0")
+        if "last_test_message" not in rsshub_columns:
+            conn.exec_driver_sql("ALTER TABLE rsshub_instances ADD COLUMN last_test_message TEXT NOT NULL DEFAULT ''")
 
 
 def get_db() -> Iterator[Session]:

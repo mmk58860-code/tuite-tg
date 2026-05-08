@@ -4,7 +4,10 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
+from urllib.parse import urljoin
 
+import feedparser
+import httpx
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -107,6 +110,9 @@ RSSHUB_EXPORT_FIELDS = [
     "proxy_uri",
     "container_id",
     "status",
+    "last_test_at",
+    "last_test_ok",
+    "last_test_message",
     "created_at",
     "updated_at",
 ]
@@ -718,6 +724,39 @@ async def refresh_rsshub(
     return RedirectResponse("/#rsshub", status_code=303)
 
 
+@app.post("/rsshub/{rsshub_id}/test")
+async def test_rsshub(
+    rsshub_id: int,
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    item = db.query(RsshubInstance).filter(RsshubInstance.id == rsshub_id).first()
+    watch_list = (
+        db.query(WatchList)
+        .filter(WatchList.token_id == 0, WatchList.enabled.is_(True))
+        .order_by(WatchList.id.asc())
+        .first()
+    )
+    if not item:
+        add_log(db, "ERROR", "RSSHub 测试失败：实例不存在")
+        return RedirectResponse("/#rsshub", status_code=303)
+    if not watch_list:
+        item.last_test_at = utc_now()
+        item.last_test_ok = False
+        item.last_test_message = "没有启用的 List，无法模拟真实 RSSHub 抓取。"
+        item.updated_at = utc_now()
+        add_log(db, "ERROR", f"{item.name} RSSHub 测试失败：没有启用的 List")
+        return RedirectResponse("/#rsshub", status_code=303)
+
+    ok, message = await run_rsshub_real_fetch_test(item.internal_url, watch_list.list_id)
+    item.last_test_at = utc_now()
+    item.last_test_ok = ok
+    item.last_test_message = message
+    item.updated_at = utc_now()
+    add_log(db, "INFO" if ok else "ERROR", f"{item.name} RSSHub 真实抓取测试: {message}")
+    return RedirectResponse("/#rsshub", status_code=303)
+
+
 @app.post("/rsshub/{rsshub_id}/update")
 async def update_rsshub(
     rsshub_id: int,
@@ -877,6 +916,21 @@ def sanitize_container_name(value: str) -> str:
     value = value.strip().lower()
     value = re.sub(r"[^a-z0-9_.-]+", "-", value)
     return value.strip("-._")
+
+
+async def run_rsshub_real_fetch_test(base_url: str, list_id: str) -> tuple[bool, str]:
+    url = urljoin(base_url.rstrip("/") + "/", f"twitter/list/{list_id}")
+    try:
+        async with httpx.AsyncClient(timeout=35.0) as client:
+            resp = await client.get(url)
+    except httpx.HTTPError as exc:
+        return False, f"请求 RSSHub 失败：{exc}"
+    if resp.status_code >= 400:
+        return False, f"RSSHub HTTP {resp.status_code}: {resp.text[:300]}"
+    parsed = feedparser.parse(resp.text)
+    if parsed.bozo:
+        return False, f"RSS 解析失败：{parsed.bozo_exception}"
+    return True, f"测试成功，List {list_id} 返回 {len(parsed.entries)} 条。"
 
 
 def serialize_row(row: object, fields: list[str]) -> dict[str, object]:

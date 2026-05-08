@@ -121,6 +121,9 @@
           <b>{{ item.status }}</b>
         </div>
         <div class="actions">
+          <form method="post" action="/rsshub/{{ item.id }}/test">
+            <button type="submit" class="secondary">测试抓取</button>
+          </form>
           {% if item.status == 'compose' %}
             <span class="muted">内置服务，可编辑代理</span>
           {% elif item.container_id %}
@@ -136,6 +139,13 @@
               <button type="submit" class="danger">删除</button>
             </form>
           {% endif %}
+        </div>
+        <div class="rsshub-test span-4">
+          <span>测试结果</span>
+          <b class="{{ 'ok-text' if item.last_test_ok else 'warn-text' }}">
+            {{ item.last_test_message or '未测试' }}
+          </b>
+          <small>测试时间：{{ item.last_test_at | beijing_time }}</small>
         </div>
         <details class="span-4">
           <summary>编辑 RSSHub 配置</summary>

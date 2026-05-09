@@ -237,7 +237,7 @@
           {% endif %}
           <code>{{ item.list_id }}</code>
         </p>
-        <p>当前绑定 {{ enabled_binding_count }} 个 RSSHub，系统按全局轮询秒数在这些任务之间轮流执行。</p>
+        <p>当前绑定 {{ enabled_binding_count }} 个 RSSHub；全局共 {{ stats.enabled_tasks }} 个任务，按每 {{ settings.global_poll_seconds }} 秒轮询，完整一圈约 {{ stats.enabled_tasks * (settings.global_poll_seconds | int) }} 秒。</p>
         <p>
           最后检查：{{ item.last_checked_at | beijing_time }}
           · 最后成功：{{ item.last_success_at | beijing_time }}

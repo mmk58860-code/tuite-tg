@@ -949,6 +949,10 @@ async def update_list_bindings(
         ensure_watch_list_binding(db, item, rsshub_id)
     if valid_ids:
         item.rsshub_instance_id = min(valid_ids)
+    else:
+        item.rsshub_instance_id = 0
+        item.healthy = False
+        item.last_error = "当前未绑定 RSSHub。"
     add_log(db, "INFO", f"List 绑定已更新: {item.list_id} -> {', '.join(str(x) for x in sorted(valid_ids)) or '无'}")
     return RedirectResponse("/#rsshub", status_code=303)
 
@@ -1098,19 +1102,14 @@ def ensure_list_rsshub_bindings(
         if rsshub_instances is not None
         else db.query(RsshubInstance).order_by(RsshubInstance.host_port.asc(), RsshubInstance.id.asc()).all()
     )
-    if not lists or not rsshub_instances:
+    if not lists:
         return
     known_ids = {item.id for item in rsshub_instances}
-    default_id = rsshub_instances[0].id
-    changed = 0
     for watch_list in lists:
-        if watch_list.rsshub_instance_id not in known_ids:
-            watch_list.rsshub_instance_id = default_id
-            changed += 1
+        if watch_list.rsshub_instance_id and watch_list.rsshub_instance_id not in known_ids:
+            watch_list.rsshub_instance_id = 0
         if watch_list.rsshub_instance_id:
             ensure_watch_list_binding(db, watch_list, watch_list.rsshub_instance_id)
-    if changed:
-        add_log(db, "INFO", f"已为 {changed} 个 List 绑定默认 RSSHub。")
 
 
 def ensure_watch_list_binding(db: Session, watch_list: WatchList, rsshub_instance_id: int) -> None:

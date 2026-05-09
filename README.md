@@ -1,6 +1,6 @@
 # Tuite TG
 
-一个把 RSSHub、X/Twitter List、Telegram 报警和 GraphQL ID 自动修复整合在一起的网页后台。
+一个把 RSSHub、X/Twitter List 和 Telegram 报警整合在一起的网页后台。
 
 ## 设计目标
 
@@ -101,7 +101,7 @@ RSSHub：选择 rsshub1/rsshub2，默认使用第一个 RSSHub 容器
 
 代理设置里修改代理地址后，会自动同步到正在使用旧地址的 RSSHub 配置；如果 RSSHub 容器是网页创建和管理的，会同时尝试按新代理重建容器，让 `PROXY_URI` 生效。正在使用中的代理不能直接停用，需要先把 RSSHub 切到其它代理。
 
-## GraphQL ID 变更时的处理
+## 抓取异常时的处理
 
 当 RSSHub 返回 HTTP 错误、RSS 解析失败或其它抓取异常时：
 
@@ -109,11 +109,9 @@ RSSHub：选择 rsshub1/rsshub2，默认使用第一个 RSSHub 容器
 2. 按冷却时间控制 TG 报警频率，避免重复刷屏。
 3. 下一轮仍会继续扫描其它启用 List；单个 List 失败不会拖停整个监控。
 
-注意：当前主流程只使用 RSSHub 抓取，fallback 自动修复已关闭。
-
 ## 预判风险
 
-- X/Twitter 不只会改 GraphQL ID，也可能改返回 JSON 结构、feature flags、认证要求。
+- X/Twitter 可能改返回结构、认证要求或风控策略，导致 RSSHub 抓取波动。
 - 5 秒是全局轮询，不建议监控 List 过多时设置过低。
 - RSSHub 的 `CACHE_EXPIRE` 如果太大，watcher 会反复拿缓存；建议 30 秒起步。
 - 代理质量会直接影响 RSSHub 抓取稳定性。

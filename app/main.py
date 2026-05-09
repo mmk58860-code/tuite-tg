@@ -375,7 +375,7 @@ async def check_translation_balance(
         summary = await query_recent_costs(endpoint)
         add_log(db, "INFO", summary)
     except (OpenAIConfigError, OpenAIRequestError, Exception) as exc:
-        add_log(db, "ERROR", f"费用查询失败: {exc}")
+        add_log(db, "ERROR", f"余额查询失败: {exc}")
     return RedirectResponse("/#settings", status_code=303)
 
 

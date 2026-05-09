@@ -24,6 +24,7 @@ from .database import (
     utc_now,
 )
 from .notifier import format_alert, format_feed_item, send_apprise, send_telegram
+from .openai_client import OpenAIConfigError, OpenAIRequestError, build_endpoint, translate_text
 
 
 class Watcher:
@@ -172,7 +173,14 @@ class Watcher:
                     continue
                 add_log(db, "INFO", f"发现新推文: {item_id}")
 
-            message = format_feed_item(title, link, watch_list["name"] or watch_list["list_id"], author_label)
+            translated_title = await maybe_translate_title(title)
+            message = format_feed_item(
+                title,
+                link,
+                watch_list["name"] or watch_list["list_id"],
+                author_label,
+                translated_title,
+            )
             try:
                 await send_telegram(bot_token, chat_id, message)
                 with session_scope() as db:
@@ -286,6 +294,42 @@ def read_notify_settings() -> tuple[str, str, str]:
             get_setting(db, "telegram_chat_id", ""),
             get_setting(db, "apprise_urls", ""),
         )
+
+
+async def maybe_translate_title(text: str) -> str:
+    with session_scope() as db:
+        enabled = get_setting(db, "translate_enabled", "0") == "1"
+        if not enabled or not text.strip():
+            return ""
+        primary = {
+            "api_key": get_setting(db, "translate_api_key_primary", ""),
+            "model": get_setting(db, "translate_model_primary", "gpt-4.1-mini"),
+            "base_url": get_setting(db, "translate_base_url_primary", "https://api.openai.com/v1"),
+            "org": get_setting(db, "translate_org_primary", ""),
+            "project": get_setting(db, "translate_project_primary", ""),
+        }
+        backup = {
+            "api_key": get_setting(db, "translate_api_key_backup", ""),
+            "model": get_setting(db, "translate_model_backup", ""),
+            "base_url": get_setting(db, "translate_base_url_backup", "https://api.openai.com/v1"),
+            "org": get_setting(db, "translate_org_backup", ""),
+            "project": get_setting(db, "translate_project_backup", ""),
+        }
+    for slot in (primary, backup):
+        if not slot["api_key"] or not slot["model"]:
+            continue
+        try:
+            endpoint = build_endpoint(
+                slot["api_key"],
+                slot["model"],
+                slot["base_url"],
+                slot["org"],
+                slot["project"],
+            )
+            return await translate_text(endpoint, text)
+        except (OpenAIConfigError, OpenAIRequestError):
+            continue
+    return ""
 
 
 def read_int_setting(key: str, default: int) -> int:

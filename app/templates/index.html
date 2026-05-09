@@ -493,6 +493,49 @@
       <button type="submit" class="secondary" formaction="/settings/test-telegram">测试 TG</button>
     </div>
   </form>
+
+  <form class="panel settings-grid" method="post" action="/settings">
+    <label class="check">
+      <input name="translate_enabled" type="checkbox" {% if settings.translate_enabled == '1' %}checked{% endif %}>
+      <span>启用 OpenAI 翻译</span>
+    </label>
+    <div class="span-2 muted">收到推文后，调用 OpenAI 接口把正文翻译成中文，再一起转发到 Telegram。</div>
+    <label>主 API Key
+      <input name="translate_api_key_primary" value="{{ settings.translate_api_key_primary }}" autocomplete="off">
+    </label>
+    <label>主模型
+      <input name="translate_model_primary" value="{{ settings.translate_model_primary }}">
+    </label>
+    <label class="span-2">主 Base URL
+      <input name="translate_base_url_primary" value="{{ settings.translate_base_url_primary }}">
+    </label>
+    <label>主 Organization
+      <input name="translate_org_primary" value="{{ settings.translate_org_primary }}">
+    </label>
+    <label>主 Project
+      <input name="translate_project_primary" value="{{ settings.translate_project_primary }}">
+    </label>
+    <label>备用 API Key
+      <input name="translate_api_key_backup" value="{{ settings.translate_api_key_backup }}" autocomplete="off">
+    </label>
+    <label>备用模型
+      <input name="translate_model_backup" value="{{ settings.translate_model_backup }}">
+    </label>
+    <label class="span-2">备用 Base URL
+      <input name="translate_base_url_backup" value="{{ settings.translate_base_url_backup }}">
+    </label>
+    <label>备用 Organization
+      <input name="translate_org_backup" value="{{ settings.translate_org_backup }}">
+    </label>
+    <label>备用 Project
+      <input name="translate_project_backup" value="{{ settings.translate_project_backup }}">
+    </label>
+    <div class="actions span-2">
+      <button type="submit">保存翻译配置</button>
+      <button type="submit" class="secondary" formaction="/settings/test-translation">测试翻译</button>
+      <button type="submit" class="secondary" formaction="/settings/check-translation-balance">查询费用</button>
+    </div>
+  </form>
 </section>
 
 <section class="band" id="logs">

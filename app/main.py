@@ -45,6 +45,7 @@ from .docker_manager import (
     remove_container,
 )
 from .notifier import format_alert, send_telegram
+from .openai_client import OpenAIConfigError, OpenAIRequestError, build_endpoint, query_recent_costs, translate_text
 from .watcher import watcher
 
 
@@ -224,6 +225,17 @@ async def index(
         "apprise_urls": get_setting(db, "apprise_urls", ""),
         "global_poll_seconds": get_setting(db, "global_poll_seconds", "5"),
         "failure_cooldown_minutes": get_setting(db, "failure_cooldown_minutes", "10"),
+        "translate_enabled": get_setting(db, "translate_enabled", "0"),
+        "translate_model_primary": get_setting(db, "translate_model_primary", "gpt-4.1-mini"),
+        "translate_api_key_primary": get_setting(db, "translate_api_key_primary", ""),
+        "translate_base_url_primary": get_setting(db, "translate_base_url_primary", "https://api.openai.com/v1"),
+        "translate_org_primary": get_setting(db, "translate_org_primary", ""),
+        "translate_project_primary": get_setting(db, "translate_project_primary", ""),
+        "translate_model_backup": get_setting(db, "translate_model_backup", ""),
+        "translate_api_key_backup": get_setting(db, "translate_api_key_backup", ""),
+        "translate_base_url_backup": get_setting(db, "translate_base_url_backup", "https://api.openai.com/v1"),
+        "translate_org_backup": get_setting(db, "translate_org_backup", ""),
+        "translate_project_backup": get_setting(db, "translate_project_backup", ""),
     }
     enabled_bindings = [
         binding
@@ -302,6 +314,17 @@ async def save_settings(
     apprise_urls: str = Form(""),
     global_poll_seconds: int = Form(5),
     failure_cooldown_minutes: int = Form(10),
+    translate_enabled: str = Form(""),
+    translate_model_primary: str = Form("gpt-4.1-mini"),
+    translate_api_key_primary: str = Form(""),
+    translate_base_url_primary: str = Form("https://api.openai.com/v1"),
+    translate_org_primary: str = Form(""),
+    translate_project_primary: str = Form(""),
+    translate_model_backup: str = Form(""),
+    translate_api_key_backup: str = Form(""),
+    translate_base_url_backup: str = Form("https://api.openai.com/v1"),
+    translate_org_backup: str = Form(""),
+    translate_project_backup: str = Form(""),
     db: Session = Depends(get_db),
     _: str = Depends(current_user_from_cookie),
 ):
@@ -310,6 +333,17 @@ async def save_settings(
     set_setting(db, "apprise_urls", apprise_urls.strip())
     set_setting(db, "global_poll_seconds", str(max(1, global_poll_seconds)))
     set_setting(db, "failure_cooldown_minutes", str(max(1, failure_cooldown_minutes)))
+    set_setting(db, "translate_enabled", "1" if translate_enabled == "on" else "0")
+    set_setting(db, "translate_model_primary", translate_model_primary.strip())
+    set_setting(db, "translate_api_key_primary", translate_api_key_primary.strip())
+    set_setting(db, "translate_base_url_primary", translate_base_url_primary.strip())
+    set_setting(db, "translate_org_primary", translate_org_primary.strip())
+    set_setting(db, "translate_project_primary", translate_project_primary.strip())
+    set_setting(db, "translate_model_backup", translate_model_backup.strip())
+    set_setting(db, "translate_api_key_backup", translate_api_key_backup.strip())
+    set_setting(db, "translate_base_url_backup", translate_base_url_backup.strip())
+    set_setting(db, "translate_org_backup", translate_org_backup.strip())
+    set_setting(db, "translate_project_backup", translate_project_backup.strip())
     add_log(db, "INFO", "系统配置已保存")
     return RedirectResponse("/#settings", status_code=303)
 
@@ -326,6 +360,34 @@ async def test_telegram(
         add_log(db, "INFO", "Telegram 测试消息发送成功")
     except Exception as exc:
         add_log(db, "ERROR", f"Telegram 测试失败: {exc}")
+    return RedirectResponse("/#settings", status_code=303)
+
+
+@app.post("/settings/test-translation")
+async def test_translation(
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    try:
+        endpoint = load_translation_endpoint(db, "primary")
+        translated = await translate_text(endpoint, "OpenAI helps us translate tweets into Chinese.")
+        add_log(db, "INFO", f"翻译测试成功: {translated[:200]}")
+    except (OpenAIConfigError, OpenAIRequestError, Exception) as exc:
+        add_log(db, "ERROR", f"翻译测试失败: {exc}")
+    return RedirectResponse("/#settings", status_code=303)
+
+
+@app.post("/settings/check-translation-balance")
+async def check_translation_balance(
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    try:
+        endpoint = load_translation_endpoint(db, "primary")
+        summary = await query_recent_costs(endpoint)
+        add_log(db, "INFO", summary)
+    except (OpenAIConfigError, OpenAIRequestError, Exception) as exc:
+        add_log(db, "ERROR", f"费用查询失败: {exc}")
     return RedirectResponse("/#settings", status_code=303)
 
 
@@ -1094,6 +1156,17 @@ def resolve_proxy_choice(db: Session, value: str) -> str | None:
         .first()
     )
     return proxy.proxy_url if proxy else None
+
+
+def load_translation_endpoint(db: Session, slot: str = "primary"):
+    suffix = "primary" if slot == "primary" else "backup"
+    return build_endpoint(
+        get_setting(db, f"translate_api_key_{suffix}", ""),
+        get_setting(db, f"translate_model_{suffix}", "gpt-4.1-mini"),
+        get_setting(db, f"translate_base_url_{suffix}", "https://api.openai.com/v1"),
+        get_setting(db, f"translate_org_{suffix}", ""),
+        get_setting(db, f"translate_project_{suffix}", ""),
+    )
 
 
 def resolve_rsshub_choice(db: Session, value: int) -> int:

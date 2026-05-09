@@ -35,15 +35,16 @@
   <article class="panel stability-panel">
     <div class="stability-head">
       <div>
-        <h2>24小时稳定度看板</h2>
-        <p>最近 24 小时系统稳定度 <strong>{{ stability.availability }}%</strong></p>
+        <h2>24小时抓取看板</h2>
+        <p>最近 24 小时 RSS 抓取成功率 <strong>{{ stability.availability }}%</strong></p>
       </div>
       <div class="chart-legend">
-        <span><i class="online-dot"></i>稳定</span>
-        <span><i class="offline-dot"></i>波动</span>
+        <span><i class="online-dot"></i>抓取正常</span>
+        <span><i class="offline-dot"></i>抓取波动</span>
+        <span><i class="idle-dot"></i>空闲</span>
       </div>
     </div>
-    <div class="stability-chart" aria-label="最近 24 小时稳定度走势">
+    <div class="stability-chart" aria-label="最近 24 小时 RSS 抓取成功率走势">
       <svg viewBox="0 0 100 46" preserveAspectRatio="none" role="img">
         <defs>
           <linearGradient id="stability-fill" x1="0" x2="0" y1="0" y2="1">

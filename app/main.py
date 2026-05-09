@@ -1281,6 +1281,7 @@ def build_stability_chart(logs: list[Log]) -> dict[str, object]:
     chart_height = 46
     points: list[dict[str, object]] = []
     total_score = 0
+    active_slots = 0
 
     for index in range(slots):
         slot_start = start + timedelta(hours=index)
@@ -1289,12 +1290,24 @@ def build_stability_chart(logs: list[Log]) -> dict[str, object]:
             log for log in logs
             if slot_start <= ensure_beijing(log.created_at) < slot_end
         ]
-        errors = sum(1 for log in slot_logs if log.level.upper() == "ERROR")
-        warnings = sum(1 for log in slot_logs if log.level.upper() == "WARNING")
-        score = max(0, 100 - errors * 18 - warnings * 8)
-        total_score += score
+        task_logs = [
+            log for log in slot_logs
+            if " / List " in log.message and ("检查完成" in log.message or "抓取失败" in log.message)
+        ]
+        successes = sum(1 for log in task_logs if "检查完成" in log.message)
+        failures = sum(1 for log in task_logs if "抓取失败" in log.message)
+        is_idle = not task_logs
+        score = round(successes * 100 / len(task_logs), 2) if task_logs else 0
+        if task_logs:
+            total_score += score
+            active_slots += 1
         x = round(index * (100 / (slots - 1)), 2)
         y = round((100 - score) * (chart_height / 100), 2)
+        detail = (
+            f"{slot_start.strftime('%H:%M')} - 空闲 / 无抓取任务"
+            if is_idle
+            else f"{slot_start.strftime('%H:%M')} - 抓取成功率 {score}% / 成功 {successes} / 失败 {failures}"
+        )
         points.append(
             {
                 "x": x,
@@ -1302,14 +1315,15 @@ def build_stability_chart(logs: list[Log]) -> dict[str, object]:
                 "top": round(y * 100 / chart_height, 2),
                 "score": score,
                 "label": slot_start.strftime("%H:%M"),
-                "detail": f"{slot_start.strftime('%H:%M')} - 稳定度 {score}% / 错误 {errors} / 警告 {warnings}",
-                "errors": errors,
-                "warnings": warnings,
-                "offline": score < 95,
+                "detail": detail,
+                "successes": successes,
+                "failures": failures,
+                "idle": is_idle,
+                "offline": (not is_idle) and score < 95,
             }
         )
 
-    average = round(total_score / slots, 2) if slots else 100
+    average = round(total_score / active_slots, 2) if active_slots else 100
     return {
         "availability": average,
         "points": points,

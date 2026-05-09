@@ -563,7 +563,7 @@
     </div>
     <div class="rsshub-test">
       <span>备用余额查询结果</span>
-      <b class="test-message {{ 'warn-text' if '失败' in (settings.translate_backup_balance_result or '') else 'ok-text' }}">
+      <b class="test-message {{ 'warn-text' if ('失败' in (settings.translate_backup_balance_result or '') and '暂不支持' not in (settings.translate_backup_balance_result or '')) else 'ok-text' }}">
         {{ settings.translate_backup_balance_result or '暂无结果' }}
       </b>
     </div>

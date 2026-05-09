@@ -46,7 +46,7 @@ from .docker_manager import (
 )
 from .notifier import format_alert, send_telegram
 from .openai_client import OpenAIConfigError, OpenAIRequestError, build_endpoint, query_recent_costs, translate_text
-from .watcher import watcher
+from .watcher import translate_via_failover, watcher
 
 
 load_dotenv()
@@ -483,8 +483,9 @@ async def check_translation_balance_backup(
         set_setting(db, "translate_backup_balance_result", summary[:500])
         add_log(db, "INFO", f"备用余额查询成功: {summary}")
     except (OpenAIConfigError, OpenAIRequestError, Exception) as exc:
-        set_setting(db, "translate_backup_balance_result", f"查询失败：{exc}")
-        add_log(db, "ERROR", f"备用余额查询失败: {exc}")
+        message = f"该备用接口暂不支持余额查询：{exc}"
+        set_setting(db, "translate_backup_balance_result", message[:500])
+        add_log(db, "WARNING", f"备用余额查询不可用: {exc}")
     return RedirectResponse("/#settings", status_code=303)
 
 

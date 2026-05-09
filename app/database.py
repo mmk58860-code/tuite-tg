@@ -64,7 +64,7 @@ class TokenInstance(Base):
 
 class WatchList(Base):
     __tablename__ = "watch_lists"
-    __table_args__ = (UniqueConstraint("rsshub_instance_id", "list_id", name="uq_rsshub_list"),)
+    __table_args__ = (UniqueConstraint("token_id", "list_id", name="uq_token_list"),)
 
     id = Column(Integer, primary_key=True, index=True)
     token_id = Column(Integer, nullable=False, index=True)
@@ -205,6 +205,16 @@ def ensure_schema_migrations() -> None:
             conn.exec_driver_sql("ALTER TABLE watch_lists ADD COLUMN last_success_at DATETIME")
         if "last_alerted_at" not in list_columns:
             conn.exec_driver_sql("ALTER TABLE watch_lists ADD COLUMN last_alerted_at DATETIME")
+        conn.exec_driver_sql(
+            """
+            DELETE FROM watch_lists
+            WHERE id NOT IN (
+                SELECT MIN(id)
+                FROM watch_lists
+                GROUP BY list_id
+            )
+            """
+        )
         conn.exec_driver_sql("UPDATE watch_lists SET token_id = 0 WHERE token_id != 0")
         conn.exec_driver_sql(
             """
@@ -219,61 +229,6 @@ def ensure_schema_migrations() -> None:
               AND EXISTS (SELECT 1 FROM rsshub_instances)
             """
         )
-        watch_indexes = conn.exec_driver_sql("PRAGMA index_list(watch_lists)").fetchall()
-        has_old_unique = False
-        for index_row in watch_indexes:
-            index_name = index_row[1]
-            is_unique = bool(index_row[2])
-            if not is_unique:
-                continue
-            index_columns = [
-                info_row[2]
-                for info_row in conn.exec_driver_sql(f"PRAGMA index_info({index_name})").fetchall()
-            ]
-            if index_columns == ["token_id", "list_id"]:
-                has_old_unique = True
-                break
-        if has_old_unique:
-            conn.exec_driver_sql(
-                """
-                CREATE TABLE watch_lists_new (
-                    id INTEGER PRIMARY KEY,
-                    token_id INTEGER NOT NULL,
-                    rsshub_instance_id INTEGER NOT NULL DEFAULT 0,
-                    name VARCHAR(120) NOT NULL DEFAULT '',
-                    list_id VARCHAR(80) NOT NULL,
-                    enabled BOOLEAN NOT NULL DEFAULT 1,
-                    healthy BOOLEAN NOT NULL DEFAULT 1,
-                    last_error TEXT NOT NULL DEFAULT '',
-                    last_checked_at DATETIME,
-                    last_success_at DATETIME,
-                    last_alerted_at DATETIME,
-                    subscription_checked_at DATETIME,
-                    subscription_error TEXT NOT NULL DEFAULT '',
-                    created_at DATETIME NOT NULL,
-                    CONSTRAINT uq_rsshub_list UNIQUE (rsshub_instance_id, list_id)
-                )
-                """
-            )
-            conn.exec_driver_sql(
-                """
-                INSERT OR IGNORE INTO watch_lists_new (
-                    id, token_id, rsshub_instance_id, name, list_id, enabled, healthy,
-                    last_error, last_checked_at, last_success_at, last_alerted_at,
-                    subscription_checked_at, subscription_error, created_at
-                )
-                SELECT
-                    id, token_id, rsshub_instance_id, name, list_id, enabled, healthy,
-                    last_error, last_checked_at, last_success_at, last_alerted_at,
-                    subscription_checked_at, subscription_error, created_at
-                FROM watch_lists
-                """
-            )
-            conn.exec_driver_sql("DROP TABLE watch_lists")
-            conn.exec_driver_sql("ALTER TABLE watch_lists_new RENAME TO watch_lists")
-            conn.exec_driver_sql("CREATE INDEX ix_watch_lists_id ON watch_lists (id)")
-            conn.exec_driver_sql("CREATE INDEX ix_watch_lists_token_id ON watch_lists (token_id)")
-            conn.exec_driver_sql("CREATE INDEX ix_watch_lists_rsshub_instance_id ON watch_lists (rsshub_instance_id)")
 
         rsshub_columns = {
             row[1]

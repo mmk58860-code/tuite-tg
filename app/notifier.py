@@ -58,12 +58,12 @@ def format_feed_item(
         heading += f" - {source}"
     safe_link = html.escape(link)
     author_line = f"{html.escape(author_label)}\n" if author_label else ""
-    translation_block = f"\n\n<b>中文翻译</b>\n{html.escape(translated_title)}" if translated_title else ""
-    return (
+    body = (
         f"<b>{html.escape(heading)}</b>\n"
         f"{author_line}"
-        f"{html.escape(title)}\n\n"
-        f"{translation_block}"
-        f"{'' if not translation_block else '\n\n'}"
-        f"<a href=\"{safe_link}\">打开原文</a>"
+        f"{html.escape(title)}"
     )
+    if translated_title:
+        body += f"\n\n<b>中文翻译</b>\n{html.escape(translated_title)}"
+    body += f"\n\n<a href=\"{safe_link}\">打开原文</a>"
+    return body

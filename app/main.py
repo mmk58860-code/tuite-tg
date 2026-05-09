@@ -232,6 +232,8 @@ async def index(
         "translate_model_backup": get_setting(db, "translate_model_backup", ""),
         "translate_api_key_backup": get_setting(db, "translate_api_key_backup", ""),
         "translate_base_url_backup": get_setting(db, "translate_base_url_backup", "https://api.openai.com/v1"),
+        "translate_test_result": get_setting(db, "translate_test_result", ""),
+        "translate_balance_result": get_setting(db, "translate_balance_result", ""),
     }
     enabled_bindings = [
         binding
@@ -359,8 +361,10 @@ async def test_translation(
     try:
         endpoint = load_translation_endpoint(db, "primary")
         translated = await translate_text(endpoint, "OpenAI helps us translate tweets into Chinese.")
+        set_setting(db, "translate_test_result", translated[:500])
         add_log(db, "INFO", f"翻译测试成功: {translated[:200]}")
     except (OpenAIConfigError, OpenAIRequestError, Exception) as exc:
+        set_setting(db, "translate_test_result", f"测试失败：{exc}")
         add_log(db, "ERROR", f"翻译测试失败: {exc}")
     return RedirectResponse("/#settings", status_code=303)
 
@@ -373,8 +377,10 @@ async def check_translation_balance(
     try:
         endpoint = load_translation_endpoint(db, "primary")
         summary = await query_recent_costs(endpoint)
+        set_setting(db, "translate_balance_result", summary[:500])
         add_log(db, "INFO", summary)
     except (OpenAIConfigError, OpenAIRequestError, Exception) as exc:
+        set_setting(db, "translate_balance_result", f"查询失败：{exc}")
         add_log(db, "ERROR", f"余额查询失败: {exc}")
     return RedirectResponse("/#settings", status_code=303)
 

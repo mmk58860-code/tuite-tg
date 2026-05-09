@@ -91,13 +91,15 @@ rsshub10 -> http://rsshub10:1200 -> auth_token10 + proxy10
 `docker-compose.yml` 只保留主程序，不再固定写死 `rsshub1`、`rsshub2`。这样重启服务后，不会把网页里删除或改名的 RSSHub 容器重新拉回来。
 RSSHub 当前文档里 Twitter List 路由标注需要 `TWITTER_AUTH_TOKEN` 和 `TWITTER_THIRD_PARTY_API`，所以这些值也在网页新增/编辑 RSSHub 时填写。
 
-后台里新增监控 List 时：
+后台里新增监控方案时：
 
 ```text
-列表备注：可选
-List URL 或 ID：例如 https://x.com/i/lists/1897123691873624353
-RSSHub：选择 rsshub1/rsshub2，默认使用第一个 RSSHub 容器
+RSSHub 容器：rsshub1
+在 rsshub1 的监控方案卡片里添加 List URL 或 ID
+例如 https://x.com/i/lists/1897123691873624353
 ```
+
+每个 RSSHub 容器是一张监控方案卡片；一个 RSSHub 可以监控多个 List，多个 RSSHub 也可以监控同一个 List。系统会按“全局轮询秒数”在启用的 RSSHub-List 任务之间轮流执行。
 
 代理设置里修改代理地址后，会自动同步到正在使用旧地址的 RSSHub 配置；如果 RSSHub 容器是网页创建和管理的，会同时尝试按新代理重建容器，让 `PROXY_URI` 生效。正在使用中的代理不能直接停用，需要先把 RSSHub 切到其它代理。
 
@@ -107,7 +109,7 @@ RSSHub：选择 rsshub1/rsshub2，默认使用第一个 RSSHub 容器
 
 1. Tuite TG 记录该 List 的失败状态。
 2. 按冷却时间控制 TG 报警频率，避免重复刷屏。
-3. 下一轮仍会继续扫描其它启用 List；单个 List 失败不会拖停整个监控。
+3. 下一轮仍会继续扫描其它启用的 RSSHub-List 任务；单个任务失败不会拖停整个监控。
 
 注意：当前主流程只使用 RSSHub 抓取，fallback 自动修复已关闭。
 

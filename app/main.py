@@ -191,6 +191,9 @@ async def index(
     rsshub_instances = db.query(RsshubInstance).order_by(RsshubInstance.host_port.asc()).all()
     ensure_list_rsshub_bindings(db, lists, rsshub_instances)
     rsshub_by_id = {item.id: item for item in rsshub_instances}
+    lists_by_rsshub = {item.id: [] for item in rsshub_instances}
+    for watch_list in lists:
+        lists_by_rsshub.setdefault(watch_list.rsshub_instance_id, []).append(watch_list)
     proxies = db.query(ProxyProfile).order_by(ProxyProfile.id.asc()).all()
     aliases = db.query(UserAlias).order_by(UserAlias.username.asc()).all()
     logs = db.query(Log).order_by(Log.id.desc()).limit(120).all()
@@ -225,6 +228,7 @@ async def index(
             "lists": lists,
             "rsshub_instances": rsshub_instances,
             "rsshub_by_id": rsshub_by_id,
+            "lists_by_rsshub": lists_by_rsshub,
             "proxies": proxies,
             "docker_available": docker_available(),
             "logs": logs,
@@ -381,11 +385,13 @@ async def import_data(
             clean = clean_payload(item, LIST_EXPORT_FIELDS)
             clean["token_id"] = 0
             list_value = str(clean.get("list_id", "")).strip()
-            if not list_value or list_value in imported_list_ids:
+            rsshub_id = int(clean.get("rsshub_instance_id") or 0)
+            import_key = f"{rsshub_id}:{list_value}"
+            if not list_value or import_key in imported_list_ids:
                 continue
-            imported_list_ids.add(list_value)
+            imported_list_ids.add(import_key)
             clean["list_id"] = list_value
-            clean["rsshub_instance_id"] = int(clean.get("rsshub_instance_id") or 0)
+            clean["rsshub_instance_id"] = rsshub_id
             db.add(WatchList(**clean))
 
         for item in payload.get("seen_items", []):
@@ -829,7 +835,15 @@ async def save_list(
             add_log(db, "ERROR", "List 保存失败：记录不存在")
             return RedirectResponse("/#lists", status_code=303)
     if not old:
-        old = db.query(WatchList).filter(WatchList.token_id == 0, WatchList.list_id == value).first()
+        old = (
+            db.query(WatchList)
+            .filter(
+                WatchList.token_id == 0,
+                WatchList.rsshub_instance_id == selected_rsshub_id,
+                WatchList.list_id == value,
+            )
+            .first()
+        )
     if old:
         old.name = name.strip()
         old.list_id = value

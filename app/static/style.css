@@ -581,11 +581,39 @@ button:hover,
   gap: 12px;
 }
 
-.monitor-card {
+.monitor-card,
+.monitor-plan-head,
+.plan-list-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
   align-items: start;
+}
+
+.monitor-plan {
+  display: grid;
+  gap: 14px;
+}
+
+.compact-list-form {
+  align-self: start;
+  width: min(620px, 100%);
+}
+
+.plan-list {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.plan-list-row {
+  padding: 10px 0;
+  border-bottom: 1px solid #ecf5f5;
+}
+
+.plan-list-row:last-child {
+  border-bottom: 0;
 }
 
 .add-panel {
@@ -914,7 +942,9 @@ summary {
 
   .page-top,
   .token-head,
-  .monitor-card {
+  .monitor-card,
+  .monitor-plan-head,
+  .plan-list-row {
     display: grid;
   }
 
@@ -936,6 +966,8 @@ summary {
   .alias-form,
   .import-form,
   .monitor-card,
+  .monitor-plan-head,
+  .plan-list-row,
   .alias-row,
   .list-form,
   .rsshub-row,

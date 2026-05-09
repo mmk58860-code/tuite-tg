@@ -208,44 +208,65 @@
   <div class="section-head">
     <div>
       <h2>监控方案</h2>
-      <p>按 List 绑定 RSSHub 容器；一个 RSSHub 可以抓多个 List，单个 List 失败不会拖停其它 List。</p>
+      <p>每个 RSSHub 是一个监控方案；在方案里添加要抓取的 List，多个 RSSHub 可以监控同一个 List。</p>
     </div>
   </div>
   <div class="monitor-grid">
-    {% for item in lists %}
-    <article class="token-card monitor-card">
-      {% set rsshub = rsshub_by_id.get(item.rsshub_instance_id) %}
-      <div>
-        <h3>{{ item.name or '未命名 List' }}</h3>
-        <p>
-          {% if not item.last_checked_at and not item.last_success_at and not item.last_error %}
-            <span class="badge muted">未检测</span>
-          {% else %}
-            <span class="badge {{ 'ok' if item.healthy else 'bad' }}">{{ '健康' if item.healthy else '异常' }}</span>
-          {% endif %}
-          <span class="badge {{ 'ok' if item.enabled else 'muted' }}">{{ '启用' if item.enabled else '停用' }}</span>
-          <span class="badge muted">{{ rsshub.name if rsshub else '未绑定 RSSHub' }}</span>
-          <code>{{ item.list_id }}</code>
-        </p>
-        <p>
-          最后检查：{{ item.last_checked_at | beijing_time }}
-          · 最后成功：{{ item.last_success_at | beijing_time }}
-        </p>
-        {% if item.last_error %}
-          <p class="error-text">{{ item.last_error }}</p>
-        {% endif %}
+    {% for rsshub in rsshub_instances %}
+    {% set plan_lists = lists_by_rsshub.get(rsshub.id, []) %}
+    <article class="token-card monitor-plan">
+      <div class="monitor-plan-head">
+        <div>
+          <h3>{{ rsshub.name }}</h3>
+          <p>
+            <span class="badge {{ 'ok' if rsshub.status == 'running' else 'muted' }}">{{ rsshub.status }}</span>
+            <span class="badge muted">{{ plan_lists | length }} 个 List</span>
+            <code>{{ rsshub.internal_url }}</code>
+          </p>
+        </div>
+        <form class="list-form compact-list-form" method="post" action="/lists">
+          <input type="hidden" name="rsshub_instance_id" value="{{ rsshub.id }}">
+          <input name="name" placeholder="列表备注">
+          <input name="list_id" placeholder="List URL 或 ID" required>
+          <button type="submit">添加到此方案</button>
+        </form>
       </div>
-      <div class="actions">
-        <form method="post" action="/lists/{{ item.id }}/check">
-          <button class="secondary" type="submit">手动检测</button>
-        </form>
-        <form method="post" action="/lists/{{ item.id }}/toggle" data-confirm="确认{{ '停用' if item.enabled else '启用' }} List：{{ item.name or item.list_id }} 吗？">
-          <button type="submit" class="secondary">{{ '停用' if item.enabled else '启用' }}</button>
-        </form>
+
+      <div class="plan-list">
+        {% for item in plan_lists %}
+          <div class="plan-list-row">
+            <div>
+              <strong>{{ item.name or '未命名 List' }}</strong>
+              <p>
+                {% if not item.last_checked_at and not item.last_success_at and not item.last_error %}
+                  <span class="badge muted">未检测</span>
+                {% else %}
+                  <span class="badge {{ 'ok' if item.healthy else 'bad' }}">{{ '抓取正常' if item.healthy else '抓取异常' }}</span>
+                {% endif %}
+                <span class="badge {{ 'ok' if item.enabled else 'muted' }}">{{ '启用' if item.enabled else '停用' }}</span>
+                <code>{{ item.list_id }}</code>
+              </p>
+              <p>最后检查：{{ item.last_checked_at | beijing_time }} · 最后成功：{{ item.last_success_at | beijing_time }}</p>
+              {% if item.last_error %}
+                <p class="error-text">{{ item.last_error }}</p>
+              {% endif %}
+            </div>
+            <div class="actions">
+              <form method="post" action="/lists/{{ item.id }}/check">
+                <button class="secondary" type="submit">手动检测</button>
+              </form>
+              <form method="post" action="/lists/{{ item.id }}/toggle" data-confirm="确认{{ '停用' if item.enabled else '启用' }} List：{{ item.name or item.list_id }} 吗？">
+                <button type="submit" class="secondary">{{ '停用' if item.enabled else '启用' }}</button>
+              </form>
+            </div>
+          </div>
+        {% else %}
+          <p class="muted">这个 RSSHub 方案还没有监控 List。</p>
+        {% endfor %}
       </div>
     </article>
     {% else %}
-      <div class="panel muted">暂无监控方案。先在“监控名单”添加 List。</div>
+      <div class="panel muted">暂无监控方案。先新增或查询 RSSHub 容器。</div>
     {% endfor %}
   </div>
 </section>
@@ -278,7 +299,7 @@
           <span>{{ rsshub.name if rsshub else '默认 RSSHub' }}</span>
           <span>
             {% if item.last_checked_at %}
-              {{ '正常' if item.healthy else '异常' }} · {{ item.last_checked_at | beijing_time }}
+              {{ '抓取正常' if item.healthy else '抓取异常' }} · {{ item.last_checked_at | beijing_time }}
             {% else %}
               待检测
             {% endif %}
@@ -469,7 +490,7 @@
   <div class="section-head">
     <div>
       <h2>运行日志</h2>
-      <p>显示最近 120 条事件，包括 RSSHub 异常、GraphQL 修复结果和推送状态。</p>
+      <p>显示最近 120 条事件，包括 RSSHub 抓取异常、恢复通知和推送状态。</p>
     </div>
   </div>
   <div class="panel logs">

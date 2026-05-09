@@ -501,7 +501,7 @@
       <p>显示最近 120 条事件，包括 RSSHub 异常、GraphQL 修复结果和推送状态。</p>
     </div>
   </div>
-  <div class="panel logs">
+  <div class="panel logs" data-latest-log-id="{{ latest_log_id }}">
     {% for log in logs %}
       <div class="log {{ log.level | lower }}">
         <time>{{ log.created_at | beijing_time }}</time>

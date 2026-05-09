@@ -202,6 +202,34 @@
           }
         });
       }
+
+      const logsPanel = document.querySelector(".logs[data-latest-log-id]");
+      let latestLogId = Number(logsPanel?.dataset.latestLogId || 0);
+
+      async function watchLogs() {
+        if (!logsPanel || window.location.hash !== "#logs") {
+          return;
+        }
+        try {
+          const response = await fetch("/logs/latest", {
+            headers: { "Accept": "application/json" },
+            cache: "no-store",
+          });
+          if (!response.ok) {
+            return;
+          }
+          const payload = await response.json();
+          const nextId = Number(payload.id || 0);
+          if (nextId > latestLogId) {
+            window.location.reload();
+          }
+        } catch (error) {
+          console.debug("log refresh skipped", error);
+        }
+      }
+
+      watchLogs();
+      window.setInterval(watchLogs, 4000);
     </script>
   </body>
 </html>

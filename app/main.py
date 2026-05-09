@@ -258,6 +258,7 @@ async def index(
             "stats": stats,
             "stability": build_stability_chart(stability_logs),
             "aliases": aliases,
+            "latest_log_id": logs[0].id if logs else 0,
         },
     )
 
@@ -980,6 +981,18 @@ async def trigger_monitor(_: str = Depends(current_user_from_cookie)):
 @app.get("/health")
 async def health():
     return {"ok": True}
+
+
+@app.get("/logs/latest")
+async def latest_log(
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    row = db.query(Log).order_by(Log.id.desc()).first()
+    return {
+        "id": row.id if row else 0,
+        "created_at": row.created_at.isoformat() if row and row.created_at else "",
+    }
 
 
 def extract_list_id(value: str) -> str:

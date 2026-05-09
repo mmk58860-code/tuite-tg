@@ -17,6 +17,7 @@ from .database import (
     SeenItem,
     UserAlias,
     WatchList,
+    WatchListBinding,
     add_log,
     get_setting,
     session_scope,
@@ -48,7 +49,7 @@ class Watcher:
 
     async def check_list(self, list_row_id: int) -> None:
         async with self._lock:
-            await self.poll_list(list_row_id)
+            await self.poll_list_by_watch_list(list_row_id)
 
     async def check_pair(self, token_id: int, list_row_id: int) -> None:
         await self.check_list(list_row_id)
@@ -70,39 +71,59 @@ class Watcher:
 
     async def run_once(self) -> None:
         with session_scope() as db:
-            list_row_id = self._next_list(db)
-            if not list_row_id:
+            binding_id = self._next_binding(db)
+            if not binding_id:
                 return
 
-        await self.poll_list(list_row_id)
+        await self.poll_binding(binding_id)
 
-    def _next_list(self, db: Session) -> Optional[int]:
-        lists = (
-            db.query(WatchList)
-            .filter(WatchList.token_id == 0, WatchList.enabled.is_(True))
-            .order_by(WatchList.id.asc())
+    def _next_binding(self, db: Session) -> Optional[int]:
+        bindings = (
+            db.query(WatchListBinding)
+            .join(WatchList, WatchList.id == WatchListBinding.watch_list_id)
+            .filter(
+                WatchList.token_id == 0,
+                WatchList.enabled.is_(True),
+                WatchListBinding.enabled.is_(True),
+            )
+            .order_by(WatchListBinding.id.asc())
             .all()
         )
-        if not lists:
+        if not bindings:
             return None
-        self._cursor = self._cursor % len(lists)
-        list_row_id = lists[self._cursor].id
+        self._cursor = self._cursor % len(bindings)
+        binding_id = bindings[self._cursor].id
         self._cursor += 1
-        return int(list_row_id)
+        return int(binding_id)
 
     async def poll_pair(self, token_id: int, list_row_id: int) -> None:
-        await self.poll_list(list_row_id)
+        await self.poll_list_by_watch_list(list_row_id)
 
-    async def poll_list(self, list_row_id: int) -> None:
+    async def poll_list_by_watch_list(self, list_row_id: int) -> None:
         with session_scope() as db:
-            watch_list = db.query(WatchList).filter(WatchList.id == list_row_id, WatchList.token_id == 0).first()
+            binding = (
+                db.query(WatchListBinding)
+                .filter(WatchListBinding.watch_list_id == list_row_id, WatchListBinding.enabled.is_(True))
+                .order_by(WatchListBinding.id.asc())
+                .first()
+            )
+            if not binding:
+                return
+        await self.poll_binding(binding.id)
+
+    async def poll_binding(self, binding_id: int) -> None:
+        with session_scope() as db:
+            binding = db.query(WatchListBinding).filter(WatchListBinding.id == binding_id).first()
+            if not binding:
+                return
+            watch_list = db.query(WatchList).filter(WatchList.id == binding.watch_list_id, WatchList.token_id == 0).first()
             if not watch_list:
                 return
-            rsshub = resolve_list_rsshub(db, watch_list)
+            rsshub = db.query(RsshubInstance).filter(RsshubInstance.id == binding.rsshub_instance_id).first()
             if not rsshub:
-                mark_list_failure(db, watch_list, "没有可用的 RSSHub 容器，请先创建 RSSHub，或在 List 里选择 RSSHub。")
+                mark_binding_failure(db, binding, watch_list, "没有可用的 RSSHub 容器，请先创建 RSSHub，或重新绑定 RSSHub。")
                 return
-            source_snapshot = snapshot_rsshub(rsshub)
+            source_snapshot = snapshot_rsshub(rsshub, binding.id)
             list_snapshot = snapshot_list(watch_list)
             bootstrap = (
                 db.query(SeenItem)
@@ -114,7 +135,7 @@ class Watcher:
         try:
             items = await fetch_rss_items(source_snapshot, list_snapshot)
             await self.process_items(source_snapshot, list_snapshot, items, bootstrap)
-            await mark_list_success(source_snapshot, list_snapshot, len(items))
+            await mark_binding_success(source_snapshot, list_snapshot, len(items))
         except Exception as exc:
             await self.handle_source_failure(source_snapshot, list_snapshot, str(exc))
 
@@ -171,7 +192,7 @@ class Watcher:
         body = f"{token['name']} / List {watch_list['list_id']} 抓取失败。"
         should_alert = True
         with session_scope() as db:
-            row = db.query(WatchList).filter(WatchList.id == watch_list["id"]).first()
+            row = db.query(WatchListBinding).filter(WatchListBinding.id == token["binding_id"]).first()
             if row:
                 now = utc_now()
                 was_healthy = row.healthy
@@ -214,17 +235,23 @@ async def fetch_rss_items(token: dict, watch_list: dict) -> list[dict]:
     return entries
 
 
-async def mark_list_success(source: dict, watch_list: dict, item_count: int) -> None:
+async def mark_binding_success(source: dict, watch_list: dict, item_count: int) -> None:
     bot_token, chat_id, _ = read_notify_settings()
     recovered = False
     with session_scope() as db:
-        row = db.query(WatchList).filter(WatchList.id == watch_list["id"]).first()
+        row = db.query(WatchListBinding).filter(WatchListBinding.id == source["binding_id"]).first()
         if row:
             recovered = not row.healthy or bool(row.last_error)
             row.healthy = True
             row.last_error = ""
             row.last_checked_at = utc_now()
             row.last_success_at = utc_now()
+        parent = db.query(WatchList).filter(WatchList.id == watch_list["id"]).first()
+        if parent:
+            parent.healthy = True
+            parent.last_error = ""
+            parent.last_checked_at = utc_now()
+            parent.last_success_at = utc_now()
         add_log(db, "INFO", f"{source['name']} / List {watch_list['list_id']} 检查完成，返回 {item_count} 条")
     if recovered:
         await notify_safely(
@@ -234,11 +261,14 @@ async def mark_list_success(source: dict, watch_list: dict, item_count: int) -> 
         )
 
 
-def mark_list_failure(db: Session, watch_list: WatchList, error: str) -> None:
+def mark_binding_failure(db: Session, binding: WatchListBinding, watch_list: WatchList, error: str) -> None:
+    binding.healthy = False
+    binding.last_error = error[:2000]
+    binding.last_checked_at = utc_now()
     watch_list.healthy = False
     watch_list.last_error = error[:2000]
     watch_list.last_checked_at = utc_now()
-    add_log(db, "ERROR", f"List {watch_list.list_id} 抓取失败: {error}")
+    add_log(db, "ERROR", f"List {watch_list.list_id} / RSSHub {binding.rsshub_instance_id} 抓取失败: {error}")
 
 
 async def notify_safely(bot_token: str, chat_id: str, message: str) -> None:
@@ -267,9 +297,10 @@ def read_int_setting(key: str, default: int) -> int:
         return default
 
 
-def snapshot_rsshub(rsshub: RsshubInstance) -> dict:
+def snapshot_rsshub(rsshub: RsshubInstance, binding_id: int) -> dict:
     return {
         "id": rsshub.id,
+        "binding_id": binding_id,
         "name": rsshub.name,
         "rsshub_url": rsshub.internal_url,
     }

@@ -25,6 +25,7 @@ from .database import (
     Setting,
     UserAlias,
     WatchList,
+    WatchListBinding,
     add_log,
     get_db,
     get_setting,
@@ -68,6 +69,19 @@ LIST_EXPORT_FIELDS = [
     "subscription_checked_at",
     "subscription_error",
     "created_at",
+]
+BINDING_EXPORT_FIELDS = [
+    "id",
+    "watch_list_id",
+    "rsshub_instance_id",
+    "enabled",
+    "healthy",
+    "last_error",
+    "last_checked_at",
+    "last_success_at",
+    "last_alerted_at",
+    "created_at",
+    "updated_at",
 ]
 SEEN_EXPORT_FIELDS = [
     "item_id",
@@ -191,6 +205,10 @@ async def index(
     rsshub_instances = db.query(RsshubInstance).order_by(RsshubInstance.host_port.asc()).all()
     ensure_list_rsshub_bindings(db, lists, rsshub_instances)
     rsshub_by_id = {item.id: item for item in rsshub_instances}
+    bindings = db.query(WatchListBinding).order_by(WatchListBinding.id.asc()).all()
+    bindings_by_list: dict[int, list[WatchListBinding]] = {}
+    for binding in bindings:
+        bindings_by_list.setdefault(binding.watch_list_id, []).append(binding)
     proxies = db.query(ProxyProfile).order_by(ProxyProfile.id.asc()).all()
     aliases = db.query(UserAlias).order_by(UserAlias.username.asc()).all()
     logs = db.query(Log).order_by(Log.id.desc()).limit(120).all()
@@ -207,13 +225,20 @@ async def index(
         "global_poll_seconds": get_setting(db, "global_poll_seconds", "5"),
         "failure_cooldown_minutes": get_setting(db, "failure_cooldown_minutes", "10"),
     }
-    last_checked = max((item.last_checked_at for item in lists if item.last_checked_at), default=None)
+    enabled_bindings = [
+        binding
+        for binding in bindings
+        if binding.enabled and any(item.id == binding.watch_list_id and item.enabled for item in lists)
+    ]
+    last_checked = max((binding.last_checked_at for binding in enabled_bindings if binding.last_checked_at), default=None)
     enabled_lists = [item for item in lists if item.enabled]
     stats = {
         "total_lists": len(lists),
         "enabled_lists": len(enabled_lists),
-        "healthy_lists": sum(1 for item in enabled_lists if item.healthy and item.last_success_at),
-        "unchecked_lists": sum(1 for item in enabled_lists if not item.last_checked_at and not item.last_success_at and not item.last_error),
+        "healthy_lists": sum(1 for binding in enabled_bindings if binding.healthy and binding.last_success_at),
+        "unchecked_lists": sum(1 for binding in enabled_bindings if not binding.last_checked_at and not binding.last_success_at and not binding.last_error),
+        "total_tasks": len(bindings),
+        "enabled_tasks": len(enabled_bindings),
         "total_rsshub": len(rsshub_instances),
         "last_checked_at": last_checked,
         "telegram_ready": bool(settings["telegram_bot_token"] and settings["telegram_chat_id"]),
@@ -225,6 +250,7 @@ async def index(
             "lists": lists,
             "rsshub_instances": rsshub_instances,
             "rsshub_by_id": rsshub_by_id,
+            "bindings_by_list": bindings_by_list,
             "proxies": proxies,
             "docker_available": docker_available(),
             "logs": logs,
@@ -319,6 +345,10 @@ async def export_data(
             serialize_row(item, LIST_EXPORT_FIELDS)
             for item in db.query(WatchList).order_by(WatchList.id.asc()).all()
         ],
+        "watch_list_bindings": [
+            serialize_row(item, BINDING_EXPORT_FIELDS)
+            for item in db.query(WatchListBinding).order_by(WatchListBinding.id.asc()).all()
+        ],
         "rsshub_instances": [
             serialize_row(item, RSSHUB_EXPORT_FIELDS)
             for item in db.query(RsshubInstance).order_by(RsshubInstance.id.asc()).all()
@@ -366,6 +396,7 @@ async def import_data(
 
     try:
         db.query(SeenItem).delete()
+        db.query(WatchListBinding).delete()
         db.query(WatchList).delete()
         db.query(RsshubInstance).delete()
         db.query(ProxyProfile).delete()
@@ -388,6 +419,10 @@ async def import_data(
             clean["rsshub_instance_id"] = int(clean.get("rsshub_instance_id") or 0)
             db.add(WatchList(**clean))
 
+        for item in payload.get("watch_list_bindings", []):
+            clean = clean_payload(item, BINDING_EXPORT_FIELDS)
+            db.add(WatchListBinding(**clean))
+
         for item in payload.get("seen_items", []):
             db.add(SeenItem(**clean_payload(item, SEEN_EXPORT_FIELDS)))
 
@@ -406,6 +441,7 @@ async def import_data(
             db.add(UserAlias(**clean_payload(item, USER_ALIAS_EXPORT_FIELDS)))
 
         migrate_existing_proxies(db)
+        ensure_list_rsshub_bindings(db)
 
         add_log(db, "INFO", "数据导入完成，已覆盖 RSSHub、List、用户备注、系统配置和去重记录")
     except Exception as exc:
@@ -828,8 +864,6 @@ async def save_list(
         if not old:
             add_log(db, "ERROR", "List 保存失败：记录不存在")
             return RedirectResponse("/#lists", status_code=303)
-    if not old:
-        old = db.query(WatchList).filter(WatchList.token_id == 0, WatchList.list_id == value).first()
     if old:
         old.name = name.strip()
         old.list_id = value
@@ -839,16 +873,18 @@ async def save_list(
         old.last_error = ""
         old.last_checked_at = None
         old.last_success_at = None
+        ensure_watch_list_binding(db, old, selected_rsshub_id)
     else:
-        db.add(
-            WatchList(
-                token_id=0,
-                rsshub_instance_id=selected_rsshub_id,
-                name=name.strip(),
-                list_id=value,
-                enabled=True,
-            )
+        watch_list = WatchList(
+            token_id=0,
+            rsshub_instance_id=selected_rsshub_id,
+            name=name.strip(),
+            list_id=value,
+            enabled=True,
         )
+        db.add(watch_list)
+        db.flush()
+        ensure_watch_list_binding(db, watch_list, selected_rsshub_id)
     add_log(db, "INFO", f"List 已保存: {value}")
     return RedirectResponse("/#lists", status_code=303)
 
@@ -876,8 +912,45 @@ async def check_list(
     if not item:
         add_log(db, "ERROR", "List 手动检测失败：记录不存在")
         return RedirectResponse("/#lists", status_code=303)
-    await watcher.check_list(item.id)
+    bindings = (
+        db.query(WatchListBinding)
+        .filter(WatchListBinding.watch_list_id == item.id, WatchListBinding.enabled.is_(True))
+        .order_by(WatchListBinding.id.asc())
+        .all()
+    )
+    if not bindings:
+        add_log(db, "ERROR", f"List 手动检测失败：{item.list_id} 没有启用的 RSSHub 绑定")
+        return RedirectResponse("/#lists", status_code=303)
+    for binding in bindings:
+        await watcher.poll_binding(binding.id)
     return RedirectResponse("/#lists", status_code=303)
+
+
+@app.post("/lists/{list_id}/bindings")
+async def update_list_bindings(
+    list_id: int,
+    rsshub_ids: list[int] = Form([]),
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    item = db.query(WatchList).filter(WatchList.id == list_id, WatchList.token_id == 0).first()
+    if not item:
+        add_log(db, "ERROR", "绑定 RSSHub 失败：List 不存在")
+        return RedirectResponse("/#rsshub", status_code=303)
+    valid_ids = {
+        rsshub.id
+        for rsshub in db.query(RsshubInstance).filter(RsshubInstance.id.in_(rsshub_ids)).all()
+    } if rsshub_ids else set()
+    bindings = db.query(WatchListBinding).filter(WatchListBinding.watch_list_id == item.id).all()
+    for binding in bindings:
+        binding.enabled = binding.rsshub_instance_id in valid_ids
+        binding.updated_at = utc_now()
+    for rsshub_id in valid_ids:
+        ensure_watch_list_binding(db, item, rsshub_id)
+    if valid_ids:
+        item.rsshub_instance_id = min(valid_ids)
+    add_log(db, "INFO", f"List 绑定已更新: {item.list_id} -> {', '.join(str(x) for x in sorted(valid_ids)) or '无'}")
+    return RedirectResponse("/#rsshub", status_code=303)
 
 
 @app.post("/lists/{list_id}/delete")
@@ -889,6 +962,7 @@ async def delete_list(
     item = db.query(WatchList).filter(WatchList.id == list_id).first()
     redirect_url = "/#lists"
     if item:
+        db.query(WatchListBinding).filter(WatchListBinding.watch_list_id == item.id).delete()
         db.delete(item)
     return RedirectResponse(redirect_url, status_code=303)
 
@@ -1033,8 +1107,38 @@ def ensure_list_rsshub_bindings(
         if watch_list.rsshub_instance_id not in known_ids:
             watch_list.rsshub_instance_id = default_id
             changed += 1
+        if watch_list.rsshub_instance_id:
+            ensure_watch_list_binding(db, watch_list, watch_list.rsshub_instance_id)
     if changed:
         add_log(db, "INFO", f"已为 {changed} 个 List 绑定默认 RSSHub。")
+
+
+def ensure_watch_list_binding(db: Session, watch_list: WatchList, rsshub_instance_id: int) -> None:
+    if not rsshub_instance_id:
+        return
+    binding = (
+        db.query(WatchListBinding)
+        .filter(
+            WatchListBinding.watch_list_id == watch_list.id,
+            WatchListBinding.rsshub_instance_id == rsshub_instance_id,
+        )
+        .first()
+    )
+    now = utc_now()
+    if binding:
+        binding.enabled = True
+        binding.updated_at = now
+        return
+    db.add(
+        WatchListBinding(
+            watch_list_id=watch_list.id,
+            rsshub_instance_id=rsshub_instance_id,
+            enabled=True,
+            healthy=True,
+            created_at=now,
+            updated_at=now,
+        )
+    )
 
 
 def sync_proxy_references(

@@ -82,6 +82,23 @@ class WatchList(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
 
 
+class WatchListBinding(Base):
+    __tablename__ = "watch_list_bindings"
+    __table_args__ = (UniqueConstraint("watch_list_id", "rsshub_instance_id", name="uq_watch_list_binding"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    watch_list_id = Column(Integer, nullable=False, index=True)
+    rsshub_instance_id = Column(Integer, nullable=False, index=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+    healthy = Column(Boolean, nullable=False, default=True)
+    last_error = Column(Text, nullable=False, default="")
+    last_checked_at = Column(DateTime(timezone=True), nullable=True)
+    last_success_at = Column(DateTime(timezone=True), nullable=True)
+    last_alerted_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
 class TokenListState(Base):
     __tablename__ = "token_list_states"
     __table_args__ = (UniqueConstraint("token_id", "watch_list_id", name="uq_token_list_state"),)
@@ -229,6 +246,54 @@ def ensure_schema_migrations() -> None:
               AND EXISTS (SELECT 1 FROM rsshub_instances)
             """
         )
+
+        binding_tables = {
+            row[0]
+            for row in conn.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        }
+        if "watch_list_bindings" not in binding_tables:
+            conn.exec_driver_sql(
+                """
+                CREATE TABLE watch_list_bindings (
+                    id INTEGER PRIMARY KEY,
+                    watch_list_id INTEGER NOT NULL,
+                    rsshub_instance_id INTEGER NOT NULL,
+                    enabled BOOLEAN NOT NULL DEFAULT 1,
+                    healthy BOOLEAN NOT NULL DEFAULT 1,
+                    last_error TEXT NOT NULL DEFAULT '',
+                    last_checked_at DATETIME,
+                    last_success_at DATETIME,
+                    last_alerted_at DATETIME,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    CONSTRAINT uq_watch_list_binding UNIQUE (watch_list_id, rsshub_instance_id)
+                )
+                """
+            )
+            conn.exec_driver_sql("CREATE INDEX ix_watch_list_bindings_id ON watch_list_bindings (id)")
+            conn.exec_driver_sql("CREATE INDEX ix_watch_list_bindings_watch_list_id ON watch_list_bindings (watch_list_id)")
+            conn.exec_driver_sql("CREATE INDEX ix_watch_list_bindings_rsshub_instance_id ON watch_list_bindings (rsshub_instance_id)")
+            conn.exec_driver_sql(
+                """
+                INSERT OR IGNORE INTO watch_list_bindings (
+                    watch_list_id, rsshub_instance_id, enabled, healthy, last_error,
+                    last_checked_at, last_success_at, last_alerted_at, created_at, updated_at
+                )
+                SELECT
+                    id,
+                    rsshub_instance_id,
+                    enabled,
+                    healthy,
+                    last_error,
+                    last_checked_at,
+                    last_success_at,
+                    last_alerted_at,
+                    created_at,
+                    created_at
+                FROM watch_lists
+                WHERE rsshub_instance_id != 0
+                """
+            )
 
         rsshub_columns = {
             row[1]

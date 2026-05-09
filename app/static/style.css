@@ -823,6 +823,17 @@ summary {
   margin-top: 10px;
 }
 
+.monitor-card .inline-edit {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.monitor-card .inline-edit form {
+  display: grid;
+  gap: 8px;
+  min-width: 180px;
+}
+
 .log {
   display: grid;
   grid-template-columns: 190px 58px 1fr;

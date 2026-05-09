@@ -502,7 +502,7 @@ async def save_proxy(
         add_log(db, "ERROR", "代理保存失败：名称和代理地址不能为空")
         return RedirectResponse("/#proxies", status_code=303)
     if not is_supported_proxy(clean_proxy):
-        add_log(db, "ERROR", "代理保存失败：仅支持 http://、https://、socks5://、socks5h://")
+        add_log(db, "ERROR", "代理保存失败：仅支持 http:// 或 https:// 代理")
         return RedirectResponse("/#proxies", status_code=303)
     is_enabled = enabled == "on"
     now = utc_now()
@@ -1077,7 +1077,7 @@ def summarize_rsshub_logs(logs: str) -> str:
 
 def is_supported_proxy(proxy_url: str) -> bool:
     lowered = proxy_url.lower()
-    return lowered.startswith(("http://", "https://", "socks5://", "socks5h://"))
+    return lowered.startswith(("http://", "https://"))
 
 
 def resolve_proxy_choice(db: Session, value: str) -> str | None:
@@ -1198,7 +1198,7 @@ def sync_proxy_references(
 async def run_proxy_test(proxy_url: str) -> tuple[bool, str]:
     clean = proxy_url.strip()
     if not is_supported_proxy(clean):
-        return False, "代理格式不支持，请使用 http://、https://、socks5:// 或 socks5h://"
+        return False, "代理格式不支持，请使用 http:// 或 https://"
     transport = httpx.AsyncHTTPTransport(proxy=clean)
     async with httpx.AsyncClient(transport=transport, timeout=25.0, follow_redirects=True) as client:
         try:

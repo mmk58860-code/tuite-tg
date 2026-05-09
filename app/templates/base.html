@@ -207,7 +207,8 @@
       let latestLogId = Number(logsPanel?.dataset.latestLogId || 0);
 
       async function watchLogs() {
-        if (!logsPanel || window.location.hash !== "#logs") {
+        const watchedPanels = new Set(["#dashboard", "#rsshub", "#logs", ""]);
+        if (!logsPanel || !watchedPanels.has(window.location.hash)) {
           return;
         }
         try {

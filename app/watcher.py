@@ -21,6 +21,7 @@ from .database import (
     add_log,
     get_setting,
     session_scope,
+    set_setting,
     utc_now,
 )
 from .notifier import format_alert, format_feed_item, send_apprise, send_telegram
@@ -174,8 +175,11 @@ class Watcher:
                 add_log(db, "INFO", f"发现新推文: {item_id}")
 
             translated_title = await maybe_translate_title(title)
+            with session_scope() as db:
+                forward_mode = get_setting(db, "translate_forward_mode", "translated_only")
+            original_title = "" if forward_mode == "translated_only" and translated_title else title
             message = format_feed_item(
-                title,
+                original_title,
                 link,
                 watch_list["name"] or watch_list["list_id"],
                 author_label,
@@ -296,22 +300,28 @@ def read_notify_settings() -> tuple[str, str, str]:
         )
 
 
-async def maybe_translate_title(text: str) -> str:
+async def translate_via_failover(text: str, prefer_active: bool = False) -> tuple[str, str]:
     with session_scope() as db:
         enabled = get_setting(db, "translate_enabled", "0") == "1"
         if not enabled or not text.strip():
-            return ""
+            return "", "primary"
+        active_slot = get_setting(db, "translate_active_slot", "primary")
         primary = {
             "api_key": get_setting(db, "translate_api_key_primary", ""),
             "model": get_setting(db, "translate_model_primary", "gpt-4.1-mini"),
             "base_url": get_setting(db, "translate_base_url_primary", "https://api.openai.com/v1"),
+            "slot": "primary",
         }
         backup = {
             "api_key": get_setting(db, "translate_api_key_backup", ""),
             "model": get_setting(db, "translate_model_backup", ""),
             "base_url": get_setting(db, "translate_base_url_backup", "https://api.openai.com/v1"),
+            "slot": "backup",
         }
-    for slot in (primary, backup):
+    slots = [primary, backup]
+    if prefer_active and active_slot == "backup":
+        slots = [backup, primary]
+    for slot in slots:
         if not slot["api_key"] or not slot["model"]:
             continue
         try:
@@ -320,10 +330,22 @@ async def maybe_translate_title(text: str) -> str:
                 slot["model"],
                 slot["base_url"],
             )
-            return await translate_text(endpoint, text)
+            translated = await translate_text(endpoint, text)
+            with session_scope() as db:
+                set_active_slot = slot["slot"]
+                previous_slot = get_setting(db, "translate_active_slot", "primary")
+                set_setting(db, "translate_active_slot", set_active_slot)
+                if previous_slot != set_active_slot:
+                    add_log(db, "INFO", f"翻译接口当前切换到{'主用' if set_active_slot == 'primary' else '备用'}")
+            return translated, slot["slot"]
         except (OpenAIConfigError, OpenAIRequestError):
             continue
-    return ""
+    return "", active_slot
+
+
+async def maybe_translate_title(text: str) -> str:
+    translated, _ = await translate_via_failover(text)
+    return translated
 
 
 def read_int_setting(key: str, default: int) -> int:

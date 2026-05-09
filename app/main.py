@@ -232,8 +232,13 @@ async def index(
         "translate_model_backup": get_setting(db, "translate_model_backup", ""),
         "translate_api_key_backup": get_setting(db, "translate_api_key_backup", ""),
         "translate_base_url_backup": get_setting(db, "translate_base_url_backup", "https://api.openai.com/v1"),
-        "translate_test_result": get_setting(db, "translate_test_result", ""),
-        "translate_balance_result": get_setting(db, "translate_balance_result", ""),
+        "translate_forward_mode": get_setting(db, "translate_forward_mode", "translated_only"),
+        "translate_active_slot": get_setting(db, "translate_active_slot", "primary"),
+        "translate_primary_balance_result": get_setting(db, "translate_primary_balance_result", ""),
+        "translate_backup_balance_result": get_setting(db, "translate_backup_balance_result", ""),
+        "translate_primary_test_result": get_setting(db, "translate_primary_test_result", ""),
+        "translate_backup_test_result": get_setting(db, "translate_backup_test_result", ""),
+        "translate_auto_test_result": get_setting(db, "translate_auto_test_result", ""),
     }
     enabled_bindings = [
         binding
@@ -319,6 +324,7 @@ async def save_settings(
     translate_model_backup: str = Form(""),
     translate_api_key_backup: str = Form(""),
     translate_base_url_backup: str = Form("https://api.openai.com/v1"),
+    translate_forward_mode: str = Form("translated_only"),
     db: Session = Depends(get_db),
     _: str = Depends(current_user_from_cookie),
 ):
@@ -334,6 +340,7 @@ async def save_settings(
     set_setting(db, "translate_model_backup", translate_model_backup.strip())
     set_setting(db, "translate_api_key_backup", translate_api_key_backup.strip())
     set_setting(db, "translate_base_url_backup", translate_base_url_backup.strip())
+    set_setting(db, "translate_forward_mode", translate_forward_mode.strip() or "translated_only")
     add_log(db, "INFO", "系统配置已保存")
     return RedirectResponse("/#settings", status_code=303)
 
@@ -353,35 +360,86 @@ async def test_telegram(
     return RedirectResponse("/#settings", status_code=303)
 
 
-@app.post("/settings/test-translation")
-async def test_translation(
+@app.post("/settings/test-translation-primary")
+async def test_translation_primary(
     db: Session = Depends(get_db),
     _: str = Depends(current_user_from_cookie),
 ):
     try:
         endpoint = load_translation_endpoint(db, "primary")
         translated = await translate_text(endpoint, "OpenAI helps us translate tweets into Chinese.")
-        set_setting(db, "translate_test_result", translated[:500])
-        add_log(db, "INFO", f"翻译测试成功: {translated[:200]}")
+        set_setting(db, "translate_primary_test_result", translated[:500])
+        set_setting(db, "translate_active_slot", "primary")
+        add_log(db, "INFO", f"主用翻译测试成功: {translated[:200]}")
     except (OpenAIConfigError, OpenAIRequestError, Exception) as exc:
-        set_setting(db, "translate_test_result", f"测试失败：{exc}")
-        add_log(db, "ERROR", f"翻译测试失败: {exc}")
+        set_setting(db, "translate_primary_test_result", f"测试失败：{exc}")
+        add_log(db, "ERROR", f"主用翻译测试失败: {exc}")
     return RedirectResponse("/#settings", status_code=303)
 
 
-@app.post("/settings/check-translation-balance")
-async def check_translation_balance(
+@app.post("/settings/test-translation-backup")
+async def test_translation_backup(
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    try:
+        endpoint = load_translation_endpoint(db, "backup")
+        translated = await translate_text(endpoint, "OpenAI helps us translate tweets into Chinese.")
+        set_setting(db, "translate_backup_test_result", translated[:500])
+        add_log(db, "INFO", f"备用翻译测试成功: {translated[:200]}")
+    except (OpenAIConfigError, OpenAIRequestError, Exception) as exc:
+        set_setting(db, "translate_backup_test_result", f"测试失败：{exc}")
+        add_log(db, "ERROR", f"备用翻译测试失败: {exc}")
+    return RedirectResponse("/#settings", status_code=303)
+
+
+@app.post("/settings/test-translation-auto")
+async def test_translation_auto(
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    try:
+        translated, slot = await translate_via_failover(
+            "OpenAI helps us translate tweets into Chinese.",
+            prefer_active=True,
+        )
+        set_setting(db, "translate_auto_test_result", f"当前使用：{'主用' if slot == 'primary' else '备用'}\n{translated[:500]}")
+        add_log(db, "INFO", f"自动切换翻译测试成功，当前使用 {slot}")
+    except (OpenAIConfigError, OpenAIRequestError, Exception) as exc:
+        set_setting(db, "translate_auto_test_result", f"测试失败：{exc}")
+        add_log(db, "ERROR", f"自动切换翻译测试失败: {exc}")
+    return RedirectResponse("/#settings", status_code=303)
+
+
+@app.post("/settings/check-translation-balance-primary")
+async def check_translation_balance_primary(
     db: Session = Depends(get_db),
     _: str = Depends(current_user_from_cookie),
 ):
     try:
         endpoint = load_translation_endpoint(db, "primary")
         summary = await query_recent_costs(endpoint)
-        set_setting(db, "translate_balance_result", summary[:500])
-        add_log(db, "INFO", summary)
+        set_setting(db, "translate_primary_balance_result", summary[:500])
+        add_log(db, "INFO", f"主用余额查询成功: {summary}")
     except (OpenAIConfigError, OpenAIRequestError, Exception) as exc:
-        set_setting(db, "translate_balance_result", f"查询失败：{exc}")
-        add_log(db, "ERROR", f"余额查询失败: {exc}")
+        set_setting(db, "translate_primary_balance_result", f"查询失败：{exc}")
+        add_log(db, "ERROR", f"主用余额查询失败: {exc}")
+    return RedirectResponse("/#settings", status_code=303)
+
+
+@app.post("/settings/check-translation-balance-backup")
+async def check_translation_balance_backup(
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    try:
+        endpoint = load_translation_endpoint(db, "backup")
+        summary = await query_recent_costs(endpoint)
+        set_setting(db, "translate_backup_balance_result", summary[:500])
+        add_log(db, "INFO", f"备用余额查询成功: {summary}")
+    except (OpenAIConfigError, OpenAIRequestError, Exception) as exc:
+        set_setting(db, "translate_backup_balance_result", f"查询失败：{exc}")
+        add_log(db, "ERROR", f"备用余额查询失败: {exc}")
     return RedirectResponse("/#settings", status_code=303)
 
 

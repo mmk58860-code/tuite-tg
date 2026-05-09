@@ -518,21 +518,52 @@
     <label class="span-2">备用 Base URL
       <input name="translate_base_url_backup" value="{{ settings.translate_base_url_backup }}">
     </label>
+    <label class="span-2">转发格式
+      <select name="translate_forward_mode">
+        <option value="translated_only" {% if settings.translate_forward_mode == 'translated_only' %}selected{% endif %}>仅中文</option>
+        <option value="original_and_translation" {% if settings.translate_forward_mode == 'original_and_translation' %}selected{% endif %}>原文 + 中文</option>
+      </select>
+    </label>
+    <div class="rsshub-test span-2">
+      <span>当前翻译接口</span>
+      <b class="test-message ok-text">{{ '主用' if settings.translate_active_slot == 'primary' else '备用' }}</b>
+    </div>
     <div class="actions span-2">
       <button type="submit">保存翻译配置</button>
-      <button type="submit" class="secondary" formaction="/settings/test-translation">测试翻译</button>
-      <button type="submit" class="secondary" formaction="/settings/check-translation-balance">查询余额</button>
+      <button type="submit" class="secondary" formaction="/settings/test-translation-primary">测主用</button>
+      <button type="submit" class="secondary" formaction="/settings/test-translation-backup">测备用</button>
+      <button type="submit" class="secondary" formaction="/settings/test-translation-auto">测自动切换</button>
+      <button type="submit" class="secondary" formaction="/settings/check-translation-balance-primary">查主用余额</button>
+      <button type="submit" class="secondary" formaction="/settings/check-translation-balance-backup">查备用余额</button>
     </div>
     <div class="rsshub-test span-2">
-      <span>最近翻译测试结果</span>
-      <b class="test-message {{ 'warn-text' if '失败' in (settings.translate_test_result or '') else 'ok-text' }}">
-        {{ settings.translate_test_result or '暂无结果' }}
+      <span>主用翻译测试结果</span>
+      <b class="test-message {{ 'warn-text' if '失败' in (settings.translate_primary_test_result or '') else 'ok-text' }}">
+        {{ settings.translate_primary_test_result or '暂无结果' }}
       </b>
     </div>
     <div class="rsshub-test span-2">
-      <span>最近余额查询结果</span>
-      <b class="test-message {{ 'warn-text' if '失败' in (settings.translate_balance_result or '') else 'ok-text' }}">
-        {{ settings.translate_balance_result or '暂无结果' }}
+      <span>备用翻译测试结果</span>
+      <b class="test-message {{ 'warn-text' if '失败' in (settings.translate_backup_test_result or '') else 'ok-text' }}">
+        {{ settings.translate_backup_test_result or '暂无结果' }}
+      </b>
+    </div>
+    <div class="rsshub-test span-2">
+      <span>自动切换测试结果</span>
+      <b class="test-message {{ 'warn-text' if '失败' in (settings.translate_auto_test_result or '') else 'ok-text' }}">
+        {{ settings.translate_auto_test_result or '暂无结果' }}
+      </b>
+    </div>
+    <div class="rsshub-test">
+      <span>主用余额查询结果</span>
+      <b class="test-message {{ 'warn-text' if '失败' in (settings.translate_primary_balance_result or '') else 'ok-text' }}">
+        {{ settings.translate_primary_balance_result or '暂无结果' }}
+      </b>
+    </div>
+    <div class="rsshub-test">
+      <span>备用余额查询结果</span>
+      <b class="test-message {{ 'warn-text' if '失败' in (settings.translate_backup_balance_result or '') else 'ok-text' }}">
+        {{ settings.translate_backup_balance_result or '暂无结果' }}
       </b>
     </div>
   </form>

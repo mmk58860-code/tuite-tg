@@ -527,6 +527,7 @@
     <div class="rsshub-test span-2">
       <span>当前翻译接口</span>
       <b class="test-message ok-text">{{ '主用' if settings.translate_active_slot == 'primary' else '备用' }}</b>
+      <small>主用失败时自动切换备用；备用期间每 30 分钟自动探测主用，恢复后自动切回。</small>
     </div>
     <div class="actions span-2">
       <button type="submit">保存翻译配置</button>

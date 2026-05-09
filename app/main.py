@@ -234,6 +234,7 @@ async def index(
         "translate_base_url_backup": get_setting(db, "translate_base_url_backup", "https://api.openai.com/v1"),
         "translate_forward_mode": get_setting(db, "translate_forward_mode", "translated_only"),
         "translate_active_slot": get_setting(db, "translate_active_slot", "primary"),
+        "translate_last_primary_probe_at": get_setting(db, "translate_last_primary_probe_at", ""),
         "translate_primary_balance_result": get_setting(db, "translate_primary_balance_result", ""),
         "translate_backup_balance_result": get_setting(db, "translate_backup_balance_result", ""),
         "translate_primary_test_result": get_setting(db, "translate_primary_test_result", ""),

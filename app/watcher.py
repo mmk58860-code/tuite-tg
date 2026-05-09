@@ -306,6 +306,7 @@ async def translate_via_failover(text: str, prefer_active: bool = False) -> tupl
         if not enabled or not text.strip():
             return "", "primary"
         active_slot = get_setting(db, "translate_active_slot", "primary")
+        last_primary_probe_at = parse_datetime(get_setting(db, "translate_last_primary_probe_at", ""))
         primary = {
             "api_key": get_setting(db, "translate_api_key_primary", ""),
             "model": get_setting(db, "translate_model_primary", "gpt-4.1-mini"),
@@ -321,6 +322,26 @@ async def translate_via_failover(text: str, prefer_active: bool = False) -> tupl
     slots = [primary, backup]
     if prefer_active and active_slot == "backup":
         slots = [backup, primary]
+        probe_due = (
+            last_primary_probe_at is None
+            or (utc_now() - last_primary_probe_at) >= timedelta(minutes=30)
+        )
+        if probe_due and primary["api_key"] and primary["model"]:
+            try:
+                endpoint = build_endpoint(
+                    primary["api_key"],
+                    primary["model"],
+                    primary["base_url"],
+                )
+                translated = await translate_text(endpoint, text)
+                with session_scope() as db:
+                    set_setting(db, "translate_active_slot", "primary")
+                    set_setting(db, "translate_last_primary_probe_at", utc_now().isoformat())
+                    add_log(db, "INFO", "主用翻译接口恢复可用，已自动切回主用")
+                return translated, "primary"
+            except (OpenAIConfigError, OpenAIRequestError):
+                with session_scope() as db:
+                    set_setting(db, "translate_last_primary_probe_at", utc_now().isoformat())
     for slot in slots:
         if not slot["api_key"] or not slot["model"]:
             continue
@@ -355,6 +376,15 @@ def read_int_setting(key: str, default: int) -> int:
         return int(value)
     except ValueError:
         return default
+
+
+def parse_datetime(value: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def snapshot_rsshub(rsshub: RsshubInstance, binding_id: int) -> dict:

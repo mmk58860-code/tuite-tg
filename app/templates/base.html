@@ -94,6 +94,20 @@
         }
       });
 
+      document.addEventListener("submit", function (event) {
+        const form = event.target.closest("form[data-pending-text]");
+        if (!form) {
+          return;
+        }
+        const button = form.querySelector("button[type='submit']");
+        if (!button) {
+          return;
+        }
+        button.dataset.originalText = button.textContent;
+        button.textContent = form.dataset.pendingText || "提交中...";
+        button.disabled = true;
+      });
+
       const navLinks = Array.from(document.querySelectorAll(".side-nav a[href^='#']"));
       function getLinkPanelIds(link) {
         return (link.dataset.panels || link.getAttribute("href").slice(1))

@@ -834,6 +834,28 @@ summary {
   min-width: 180px;
 }
 
+.binding-form {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7fcfc;
+}
+
+.binding-form .check {
+  align-content: center;
+  min-height: 28px;
+}
+
+.binding-actions {
+  padding-top: 6px;
+  border-top: 1px solid #e3f1f1;
+}
+
+.binding-form button[disabled] {
+  opacity: 0.72;
+  cursor: wait;
+}
+
 .log {
   display: grid;
   grid-template-columns: 190px 58px 1fr;

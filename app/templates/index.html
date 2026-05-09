@@ -249,7 +249,7 @@
         </form>
         <details class="inline-edit">
           <summary>绑定 RSSHub</summary>
-          <form method="post" action="/lists/{{ item.id }}/bindings">
+          <form class="binding-form" method="post" action="/lists/{{ item.id }}/bindings" data-pending-text="保存中...">
             {% for rsshub_item in rsshub_instances %}
               <label class="check">
                 <input
@@ -261,7 +261,7 @@
                 <span>{{ rsshub_item.name }}</span>
               </label>
             {% endfor %}
-            <div class="actions">
+            <div class="actions binding-actions">
               <button type="submit">保存绑定</button>
             </div>
           </form>

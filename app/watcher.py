@@ -186,7 +186,7 @@ class Watcher:
                 translated_title,
             )
             try:
-                await send_telegram(bot_token, chat_id, message)
+                await send_telegram_with_retry(bot_token, chat_id, message, f"推文 {item_id}")
                 with session_scope() as db:
                     add_log(db, "INFO", f"TG 推送成功: {item_id}")
                 if apprise_urls:
@@ -285,10 +285,27 @@ def mark_binding_failure(db: Session, binding: WatchListBinding, watch_list: Wat
 
 async def notify_safely(bot_token: str, chat_id: str, message: str) -> None:
     try:
-        await send_telegram(bot_token, chat_id, message)
+        await send_telegram_with_retry(bot_token, chat_id, message, "报警消息")
     except Exception as exc:
         with session_scope() as db:
             add_log(db, "ERROR", f"TG 报警发送失败: {exc}")
+
+
+async def send_telegram_with_retry(bot_token: str, chat_id: str, message: str, label: str) -> None:
+    last_error: Exception | None = None
+    for attempt in range(1, 4):
+        try:
+            await send_telegram(bot_token, chat_id, message)
+            if attempt > 1:
+                with session_scope() as db:
+                    add_log(db, "INFO", f"{label} 第 {attempt} 次重试发送成功")
+            return
+        except Exception as exc:
+            last_error = exc
+            with session_scope() as db:
+                add_log(db, "ERROR", f"{label} 第 {attempt} 次发送失败: {exc}")
+    if last_error:
+        raise last_error
 
 
 def read_notify_settings() -> tuple[str, str, str]:

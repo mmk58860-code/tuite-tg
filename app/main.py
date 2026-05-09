@@ -229,13 +229,9 @@ async def index(
         "translate_model_primary": get_setting(db, "translate_model_primary", "gpt-4.1-mini"),
         "translate_api_key_primary": get_setting(db, "translate_api_key_primary", ""),
         "translate_base_url_primary": get_setting(db, "translate_base_url_primary", "https://api.openai.com/v1"),
-        "translate_org_primary": get_setting(db, "translate_org_primary", ""),
-        "translate_project_primary": get_setting(db, "translate_project_primary", ""),
         "translate_model_backup": get_setting(db, "translate_model_backup", ""),
         "translate_api_key_backup": get_setting(db, "translate_api_key_backup", ""),
         "translate_base_url_backup": get_setting(db, "translate_base_url_backup", "https://api.openai.com/v1"),
-        "translate_org_backup": get_setting(db, "translate_org_backup", ""),
-        "translate_project_backup": get_setting(db, "translate_project_backup", ""),
     }
     enabled_bindings = [
         binding
@@ -318,13 +314,9 @@ async def save_settings(
     translate_model_primary: str = Form("gpt-4.1-mini"),
     translate_api_key_primary: str = Form(""),
     translate_base_url_primary: str = Form("https://api.openai.com/v1"),
-    translate_org_primary: str = Form(""),
-    translate_project_primary: str = Form(""),
     translate_model_backup: str = Form(""),
     translate_api_key_backup: str = Form(""),
     translate_base_url_backup: str = Form("https://api.openai.com/v1"),
-    translate_org_backup: str = Form(""),
-    translate_project_backup: str = Form(""),
     db: Session = Depends(get_db),
     _: str = Depends(current_user_from_cookie),
 ):
@@ -337,13 +329,9 @@ async def save_settings(
     set_setting(db, "translate_model_primary", translate_model_primary.strip())
     set_setting(db, "translate_api_key_primary", translate_api_key_primary.strip())
     set_setting(db, "translate_base_url_primary", translate_base_url_primary.strip())
-    set_setting(db, "translate_org_primary", translate_org_primary.strip())
-    set_setting(db, "translate_project_primary", translate_project_primary.strip())
     set_setting(db, "translate_model_backup", translate_model_backup.strip())
     set_setting(db, "translate_api_key_backup", translate_api_key_backup.strip())
     set_setting(db, "translate_base_url_backup", translate_base_url_backup.strip())
-    set_setting(db, "translate_org_backup", translate_org_backup.strip())
-    set_setting(db, "translate_project_backup", translate_project_backup.strip())
     add_log(db, "INFO", "系统配置已保存")
     return RedirectResponse("/#settings", status_code=303)
 
@@ -1164,8 +1152,6 @@ def load_translation_endpoint(db: Session, slot: str = "primary"):
         get_setting(db, f"translate_api_key_{suffix}", ""),
         get_setting(db, f"translate_model_{suffix}", "gpt-4.1-mini"),
         get_setting(db, f"translate_base_url_{suffix}", "https://api.openai.com/v1"),
-        get_setting(db, f"translate_org_{suffix}", ""),
-        get_setting(db, f"translate_project_{suffix}", ""),
     )
 
 

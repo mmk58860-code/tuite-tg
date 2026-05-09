@@ -305,15 +305,11 @@ async def maybe_translate_title(text: str) -> str:
             "api_key": get_setting(db, "translate_api_key_primary", ""),
             "model": get_setting(db, "translate_model_primary", "gpt-4.1-mini"),
             "base_url": get_setting(db, "translate_base_url_primary", "https://api.openai.com/v1"),
-            "org": get_setting(db, "translate_org_primary", ""),
-            "project": get_setting(db, "translate_project_primary", ""),
         }
         backup = {
             "api_key": get_setting(db, "translate_api_key_backup", ""),
             "model": get_setting(db, "translate_model_backup", ""),
             "base_url": get_setting(db, "translate_base_url_backup", "https://api.openai.com/v1"),
-            "org": get_setting(db, "translate_org_backup", ""),
-            "project": get_setting(db, "translate_project_backup", ""),
         }
     for slot in (primary, backup):
         if not slot["api_key"] or not slot["model"]:
@@ -323,8 +319,6 @@ async def maybe_translate_title(text: str) -> str:
                 slot["api_key"],
                 slot["model"],
                 slot["base_url"],
-                slot["org"],
-                slot["project"],
             )
             return await translate_text(endpoint, text)
         except (OpenAIConfigError, OpenAIRequestError):

@@ -19,16 +19,12 @@ class OpenAIEndpoint:
     api_key: str
     model: str
     base_url: str
-    organization_id: str = ""
-    project_id: str = ""
 
 
 def build_endpoint(
     api_key: str,
     model: str,
     base_url: str,
-    organization_id: str = "",
-    project_id: str = "",
 ) -> OpenAIEndpoint:
     clean_key = api_key.strip()
     clean_model = model.strip()
@@ -41,21 +37,14 @@ def build_endpoint(
         api_key=clean_key,
         model=clean_model,
         base_url=clean_base,
-        organization_id=organization_id.strip(),
-        project_id=project_id.strip(),
     )
 
 
 def _headers(endpoint: OpenAIEndpoint) -> dict[str, str]:
-    headers = {
+    return {
         "Authorization": f"Bearer {endpoint.api_key}",
         "Content-Type": "application/json",
     }
-    if endpoint.organization_id:
-        headers["OpenAI-Organization"] = endpoint.organization_id
-    if endpoint.project_id:
-        headers["OpenAI-Project"] = endpoint.project_id
-    return headers
 
 
 async def translate_text(endpoint: OpenAIEndpoint, text: str) -> str:

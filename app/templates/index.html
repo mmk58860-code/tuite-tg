@@ -472,7 +472,7 @@
       <p>全局轮询建议 5 秒；系统按启用 List 轮流请求对应 RSSHub 容器。</p>
     </div>
   </div>
-  <form class="panel settings-grid" method="post" action="/settings">
+  <form class="panel settings-grid" method="post" action="/settings/general">
     <label>Telegram Bot Token
       <input name="telegram_bot_token" value="{{ settings.telegram_bot_token }}" autocomplete="off">
     </label>
@@ -494,7 +494,7 @@
     </div>
   </form>
 
-  <form class="panel settings-grid" method="post" action="/settings">
+  <form class="panel settings-grid" method="post" action="/settings/translation">
     <label class="check">
       <input name="translate_enabled" type="checkbox" {% if settings.translate_enabled == '1' %}checked{% endif %}>
       <span>启用 OpenAI 翻译</span>

@@ -346,6 +346,50 @@ async def save_settings(
     return RedirectResponse("/#settings", status_code=303)
 
 
+@app.post("/settings/general")
+async def save_general_settings(
+    telegram_bot_token: str = Form(""),
+    telegram_chat_id: str = Form(""),
+    apprise_urls: str = Form(""),
+    global_poll_seconds: int = Form(5),
+    failure_cooldown_minutes: int = Form(10),
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    set_setting(db, "telegram_bot_token", telegram_bot_token.strip())
+    set_setting(db, "telegram_chat_id", telegram_chat_id.strip())
+    set_setting(db, "apprise_urls", apprise_urls.strip())
+    set_setting(db, "global_poll_seconds", str(max(1, global_poll_seconds)))
+    set_setting(db, "failure_cooldown_minutes", str(max(1, failure_cooldown_minutes)))
+    add_log(db, "INFO", "基础系统配置已保存")
+    return RedirectResponse("/#settings", status_code=303)
+
+
+@app.post("/settings/translation")
+async def save_translation_settings(
+    translate_enabled: str = Form(""),
+    translate_model_primary: str = Form("gpt-4.1-mini"),
+    translate_api_key_primary: str = Form(""),
+    translate_base_url_primary: str = Form("https://api.openai.com/v1"),
+    translate_model_backup: str = Form(""),
+    translate_api_key_backup: str = Form(""),
+    translate_base_url_backup: str = Form("https://api.openai.com/v1"),
+    translate_forward_mode: str = Form("translated_only"),
+    db: Session = Depends(get_db),
+    _: str = Depends(current_user_from_cookie),
+):
+    set_setting(db, "translate_enabled", "1" if translate_enabled == "on" else "0")
+    set_setting(db, "translate_model_primary", translate_model_primary.strip())
+    set_setting(db, "translate_api_key_primary", translate_api_key_primary.strip())
+    set_setting(db, "translate_base_url_primary", translate_base_url_primary.strip())
+    set_setting(db, "translate_model_backup", translate_model_backup.strip())
+    set_setting(db, "translate_api_key_backup", translate_api_key_backup.strip())
+    set_setting(db, "translate_base_url_backup", translate_base_url_backup.strip())
+    set_setting(db, "translate_forward_mode", translate_forward_mode.strip() or "translated_only")
+    add_log(db, "INFO", "翻译配置已保存")
+    return RedirectResponse("/#settings", status_code=303)
+
+
 @app.post("/settings/test-telegram")
 async def test_telegram(
     db: Session = Depends(get_db),

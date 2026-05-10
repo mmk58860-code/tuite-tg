@@ -95,8 +95,6 @@ def format_alert(title: str, body: str, detail: Optional[str] = None) -> str:
 
 def format_feed_item(
     author_label: str = "",
-    outer_text: str = "",
-    quote_text: str = "",
     translated_outer: str = "",
     translated_quote: str = "",
 ) -> str:

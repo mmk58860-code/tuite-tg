@@ -179,8 +179,8 @@ class Watcher:
             translated_outer = await maybe_translate_title(outer_text or title)
             translated_quote = await maybe_translate_title(quote_text) if quote_text else ""
             message = format_feed_item(
-                author_label,
-                translated_outer,
+                author_label=author_label,
+                translated_outer=translated_outer,
                 translated_quote=translated_quote,
             )
             try:

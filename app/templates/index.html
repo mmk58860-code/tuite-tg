@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="band is-active" id="dashboard">
-  <div class="metric-grid">
+  <div class="metric-grid" data-refresh-key="dashboard-metrics">
     <article class="metric-card">
       <span>任务抓取</span>
       <strong class="{{ 'ok-text' if stats.enabled_tasks == stats.healthy_lists else 'warn-text' }}">
@@ -32,7 +32,7 @@
       <p>启用中的列表数量</p>
     </article>
   </div>
-  <article class="panel stability-panel">
+  <article class="panel stability-panel" data-refresh-key="dashboard-stability">
     <div class="stability-head">
       <div>
         <h2>24小时抓取看板</h2>
@@ -102,15 +102,15 @@
   <div class="panel rsshub-list">
     {% for item in rsshub_instances %}
       <div class="rsshub-row">
-        <div>
+        <div data-refresh-key="rsshub-{{ item.id }}-identity">
           <strong>{{ item.name }}</strong>
           <code>{{ item.internal_url }}</code>
         </div>
-        <div>
+        <div data-refresh-key="rsshub-{{ item.id }}-port">
           <span>宿主机端口</span>
           <b>127.0.0.1:{{ item.host_port }}</b>
         </div>
-        <div>
+        <div data-refresh-key="rsshub-{{ item.id }}-status">
           <span>状态</span>
           <b>{{ item.status }}</b>
         </div>
@@ -132,7 +132,7 @@
             </form>
           {% endif %}
         </div>
-        <div class="rsshub-test span-4">
+        <div class="rsshub-test span-4" data-refresh-key="rsshub-{{ item.id }}-test">
           <span>测试结果</span>
           <b class="test-message {{ 'ok-text' if item.last_test_ok else 'warn-text' }}">
             {{ item.last_test_message or '未测试' }}
@@ -217,7 +217,7 @@
     <article class="token-card monitor-card">
       {% set rsshub = rsshub_by_id.get(item.rsshub_instance_id) %}
       {% set list_bindings = bindings_by_list.get(item.id, []) %}
-      <div>
+      <div data-refresh-key="monitor-card-{{ item.id }}-status">
         <h3>{{ item.name or '未命名 List' }}</h3>
         <p>
           {% if not item.last_checked_at and not item.last_success_at and not item.last_error %}
@@ -299,7 +299,7 @@
       </select>
       <button type="submit">添加 List</button>
     </form>
-    <div class="table">
+    <div class="table" data-refresh-key="lists-table">
       {% for item in lists %}
         <div class="row">
           <span>{{ item.name or '未命名' }}</span>
@@ -365,7 +365,7 @@
       <button type="submit">保存备注</button>
     </div>
   </form>
-  <div class="panel alias-list">
+  <div class="panel alias-list" data-refresh-key="alias-list">
     {% for alias in aliases %}
       <div class="alias-row">
         <strong>{{ alias.note }}</strong>
@@ -413,11 +413,11 @@
   <div class="panel proxy-list">
     {% for proxy in proxies %}
       <div class="proxy-row">
-        <div>
+        <div data-refresh-key="proxy-{{ proxy.id }}-identity">
           <strong>{{ proxy.name }}</strong>
           <code>{{ proxy.proxy_url }}</code>
         </div>
-        <div>
+        <div data-refresh-key="proxy-{{ proxy.id }}-status">
           <span>状态</span>
           <p>
             <span class="badge {{ 'ok' if proxy.enabled else 'muted' }}">{{ '启用' if proxy.enabled else '停用' }}</span>
@@ -432,7 +432,7 @@
             <button class="danger" type="submit">删除</button>
           </form>
         </div>
-        <div class="rsshub-test span-3">
+        <div class="rsshub-test span-3" data-refresh-key="proxy-{{ proxy.id }}-test">
           <span>检测结果</span>
           <b class="test-message {{ 'ok-text' if proxy.last_test_ok else 'warn-text' }}">
             {{ proxy.last_test_message or '未检测' }}
@@ -577,7 +577,7 @@
       <p>显示最近 120 条事件，包括 RSSHub 抓取异常、恢复结果和推送状态。</p>
     </div>
   </div>
-  <div class="panel logs" data-latest-log-id="{{ latest_log_id }}">
+  <div class="panel logs" data-latest-log-id="{{ latest_log_id }}" data-refresh-key="logs-list">
     {% for log in logs %}
       <div class="log {{ log.level | lower }}">
         <time>{{ log.created_at | beijing_time }}</time>

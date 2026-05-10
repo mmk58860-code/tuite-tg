@@ -205,6 +205,36 @@
 
       let logsPanel = document.querySelector(".logs[data-latest-log-id]");
       let latestLogId = Number(logsPanel?.dataset.latestLogId || 0);
+      const dirtyForms = new WeakSet();
+
+      document.addEventListener("input", function (event) {
+        const form = event.target.closest("form");
+        if (form) {
+          dirtyForms.add(form);
+        }
+      });
+
+      document.addEventListener("change", function (event) {
+        const form = event.target.closest("form");
+        if (form) {
+          dirtyForms.add(form);
+        }
+      });
+
+      document.addEventListener("submit", function (event) {
+        const form = event.target.closest("form");
+        if (form) {
+          dirtyForms.delete(form);
+        }
+      });
+
+      function panelHasUnsavedInput(panel) {
+        const activeElement = document.activeElement;
+        if (activeElement && panel.contains(activeElement) && activeElement.matches("input, textarea, select")) {
+          return true;
+        }
+        return Array.from(panel.querySelectorAll("form")).some((form) => dirtyForms.has(form));
+      }
 
       async function refreshActivePanels() {
         const response = await fetch(window.location.pathname, {
@@ -219,19 +249,30 @@
         const doc = parser.parseFromString(html, "text/html");
         const activePanels = Array.from(document.querySelectorAll(".band.is-active"));
         for (const panel of activePanels) {
-          const freshPanel = doc.getElementById(panel.id);
-          if (!freshPanel) {
-            continue;
+          const refreshItems = Array.from(panel.querySelectorAll("[data-refresh-key]"));
+          for (const item of refreshItems) {
+            if (panelHasUnsavedInput(item)) {
+              continue;
+            }
+            const key = item.dataset.refreshKey;
+            const freshItem = doc.querySelector(`[data-refresh-key="${CSS.escape(key)}"]`);
+            if (!freshItem) {
+              continue;
+            }
+            item.innerHTML = freshItem.innerHTML;
           }
-          panel.innerHTML = freshPanel.innerHTML;
         }
         logsPanel = document.querySelector(".logs[data-latest-log-id]");
-        latestLogId = Number(logsPanel?.dataset.latestLogId || latestLogId);
+        const freshLogsPanel = doc.querySelector(".logs[data-latest-log-id]");
+        latestLogId = Number(freshLogsPanel?.dataset.latestLogId || logsPanel?.dataset.latestLogId || latestLogId);
+        if (logsPanel) {
+          logsPanel.dataset.latestLogId = String(latestLogId);
+        }
       }
 
       async function watchLogs() {
-        const watchedPanels = new Set(["#dashboard", "#rsshub", "#logs", "#settings", ""]);
-        if (!logsPanel || !watchedPanels.has(window.location.hash)) {
+        const activePanel = document.querySelector(".band.is-active");
+        if (!logsPanel || !activePanel || !activePanel.querySelector("[data-refresh-key]")) {
           return;
         }
         try {

@@ -457,7 +457,7 @@ def resolve_author_label(username: str) -> str:
         alias = db.query(UserAlias).filter(UserAlias.username == username).first()
         if alias:
             return f"{alias.note} @{username}"
-    return ""
+    return f"@{username}"
 
 
 def normalize_username(value: str) -> str:

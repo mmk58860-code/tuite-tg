@@ -59,6 +59,15 @@ docker compose logs -f tuite-tg
 docker compose down
 ```
 
+强制更新到 GitHub 最新版：
+
+```bash
+chmod +x scripts/update.sh
+./scripts/update.sh
+```
+
+> `scripts/update.sh` 会丢弃服务器项目目录里的本地改动，并强制同步到 GitHub 最新 `main` 分支。服务器上不要直接改项目文件。
+
 重置后台账号密码：
 
 ```bash

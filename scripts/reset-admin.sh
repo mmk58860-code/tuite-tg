@@ -28,7 +28,7 @@ docker compose run --rm \
   -e RESET_ADMIN_USERNAME="$username" \
   -e RESET_ADMIN_PASSWORD="$password" \
   tuite-tg \
-  python -c 'import os; from app.auth import get_password_hash; from app.database import init_db, session_scope, set_setting; username=os.environ["RESET_ADMIN_USERNAME"]; password=os.environ["RESET_ADMIN_PASSWORD"]; init_db(); ctx=session_scope(); db=ctx.__enter__(); set_setting(db, "admin_username", username); set_setting(db, "admin_password_hash", get_password_hash(password)); ctx.__exit__(None, None, None); print(f"后台账号密码已重置。账号：{username}")'
+  python -c 'import os; from app.auth import get_password_hash; from app.database import init_db, session_scope, set_setting; username=os.environ["RESET_ADMIN_USERNAME"]; password=os.environ["RESET_ADMIN_PASSWORD"]; init_db(); ctx=session_scope(); db=ctx.__enter__(); set_setting(db, "admin_username", username); set_setting(db, "admin_password_hash", get_password_hash(password)); db.flush(); ctx.__exit__(None, None, None); print(f"后台账号密码已重置。账号：{username}")'
 
 docker compose restart tuite-tg
 echo "已重启主服务，请使用新账号密码登录。"

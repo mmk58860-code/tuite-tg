@@ -456,7 +456,7 @@ def resolve_author_label(username: str) -> str:
     with session_scope() as db:
         alias = db.query(UserAlias).filter(UserAlias.username == username).first()
         if alias:
-            return f"{alias.note} @{username}"
+            return f"{alias.note}----@{username}"
     return f"@{username}"
 
 

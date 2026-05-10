@@ -63,15 +63,14 @@ def format_feed_item(
     author_label: str = "",
     translated_title: str = "",
 ) -> str:
-    heading = "X List 更新"
-    if source:
-        heading += f" - {source}"
-    author_line = f"{html.escape(author_label)}\n" if author_label else ""
-    body = (
-        f"<b>{html.escape(heading)}</b>\n"
-        f"{author_line}"
-        f"{html.escape(title)}"
-    )
+    parts = []
+    if author_label:
+        parts.append(html.escape(author_label))
+    if title:
+        parts.append(html.escape(title))
+    body = "\n".join(parts)
     if translated_title:
-        body += f"\n\n<b>中文翻译</b>\n{html.escape(translated_title)}"
+        if body:
+            body += "\n\n"
+        body += f"<b>中文翻译</b>\n{html.escape(translated_title)}"
     return body

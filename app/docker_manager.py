@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from urllib.parse import quote
 
 import httpx
 
@@ -50,6 +51,31 @@ def _request(method: str, path: str, **kwargs) -> httpx.Response:
     return resp
 
 
+def ensure_image_available(image: str) -> None:
+    encoded_image = quote(image, safe="")
+    try:
+        _request("GET", f"/images/{encoded_image}/json")
+        return
+    except DockerManagerError as exc:
+        if "Docker API 404" not in str(exc):
+            raise
+    repository, tag = split_image_name(image)
+    with _client() as client:
+        resp = client.post(
+            f"/images/create?fromImage={quote(repository, safe='')}&tag={quote(tag, safe='')}",
+            timeout=300.0,
+        )
+    if resp.status_code >= 400:
+        raise DockerManagerError(f"Docker 拉取镜像失败 {resp.status_code}: {resp.text[:500]}")
+
+
+def split_image_name(image: str) -> tuple[str, str]:
+    if ":" not in image.rsplit("/", 1)[-1]:
+        return image, "latest"
+    repository, tag = image.rsplit(":", 1)
+    return repository, tag
+
+
 def create_rsshub_container(
     name: str,
     host_port: int,
@@ -57,6 +83,7 @@ def create_rsshub_container(
     third_party_api: str = "",
     proxy_uri: str = "",
 ) -> ContainerInfo:
+    ensure_image_available(RSSHUB_IMAGE)
     env = [
         "CACHE_EXPIRE=30",
         f"TWITTER_AUTH_TOKEN={twitter_auth_token}",

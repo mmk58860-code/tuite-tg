@@ -9,7 +9,7 @@
 - watcher 全局按秒轮询，按启用 List 轮流检查。
 - RSSHub 抓取失败时记录异常，并按冷却时间发送 Telegram 报警。
 
-## Ubuntu 一键安装
+## 服务器部署
 
 ```bash
 sudo apt update
@@ -33,7 +33,7 @@ chmod +x scripts/install.sh
 ./scripts/install.sh
 ```
 
-> 必须先运行安装向导。新机器如果直接执行 `docker compose up -d --build`，服务会拒绝启动并提示先完成向导初始化。
+> 必须先运行安装向导。这个项目只保留这一条正式部署路径。
 
 安装向导会要求输入：
 
@@ -70,13 +70,6 @@ chmod +x scripts/reset-admin.sh
 docker compose down
 rm -f data/tuite_tg.db
 ./scripts/install.sh
-```
-
-## Windows 开发运行
-
-```powershell
-cd C:\Users\Administrator\Desktop\tuite-tg
-.\scripts\run-dev.ps1
 ```
 
 ## RSSHub 实例建议

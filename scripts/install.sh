@@ -41,14 +41,12 @@ ask_required() {
 ask_password() {
   local first second
   while true; do
-    read -r -s -p "请输入后台登录密码: " first
-    printf '\n'
+    read -r -p "请输入后台登录密码（明文显示）: " first
     if [[ -z "$first" ]]; then
       say_error "密码不能为空，请重新输入。"
       continue
     fi
-    read -r -s -p "请再次输入后台登录密码: " second
-    printf '\n'
+    read -r -p "请再次输入后台登录密码（明文显示）: " second
     if [[ "$first" == "$second" ]]; then
       printf '%s' "$first"
       return
@@ -71,14 +69,12 @@ read_web_username() {
 read_web_password() {
   local first second
   while true; do
-    read -r -s -p "请输入后台登录密码: " first
-    printf '\n'
+    read -r -p "请输入后台登录密码（明文显示）: " first
     if [[ -z "$first" ]]; then
       say_error "密码不能为空，请重新输入。"
       continue
     fi
-    read -r -s -p "请再次输入后台登录密码: " second
-    printf '\n'
+    read -r -p "请再次输入后台登录密码（明文显示）: " second
     if [[ "$first" == "$second" ]]; then
       WEB_PASSWORD="$first"
       return

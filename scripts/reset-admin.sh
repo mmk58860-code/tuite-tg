@@ -12,14 +12,12 @@ read -r -p "请输入新的后台登录账号 [admin]: " username
 username="${username:-admin}"
 
 while true; do
-  read -r -s -p "请输入新的后台登录密码: " password
-  printf '\n'
+  read -r -p "请输入新的后台登录密码（明文显示）: " password
   if [[ -z "$password" ]]; then
     echo "密码不能为空，请重新输入。"
     continue
   fi
-  read -r -s -p "请再次输入新的后台登录密码: " password2
-  printf '\n'
+  read -r -p "请再次输入新的后台登录密码（明文显示）: " password2
   if [[ "$password" == "$password2" ]]; then
     break
   fi

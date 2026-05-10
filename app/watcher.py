@@ -238,8 +238,19 @@ class Watcher:
 async def fetch_rss_items(token: dict, watch_list: dict) -> list[dict]:
     base = token["rsshub_url"].rstrip("/") + "/"
     url = urljoin(base, f"twitter/list/{watch_list['list_id']}")
+    retry_statuses = {502, 503, 504}
+    last_resp: httpx.Response | None = None
     async with httpx.AsyncClient(timeout=35.0) as client:
-        resp = await client.get(url)
+        for attempt in range(1, 4):
+            resp = await client.get(url)
+            last_resp = resp
+            if resp.status_code not in retry_statuses:
+                break
+            if attempt < 3:
+                await asyncio.sleep(2 * attempt)
+    resp = last_resp
+    if resp is None:
+        raise RuntimeError("RSSHub 未返回响应")
     if resp.status_code >= 400:
         raise RuntimeError(f"RSSHub HTTP {resp.status_code}: {resp.text[:300]}")
     parsed = feedparser.parse(resp.text)

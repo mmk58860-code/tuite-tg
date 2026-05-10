@@ -33,6 +33,8 @@ chmod +x scripts/install.sh
 ./scripts/install.sh
 ```
 
+> 必须先运行安装向导。新机器如果直接执行 `docker compose up -d --build`，服务会拒绝启动并提示先完成向导初始化。
+
 安装向导会要求输入：
 
 - 网页访问端口

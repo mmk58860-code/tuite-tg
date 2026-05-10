@@ -52,6 +52,10 @@ from .watcher import translate_via_failover, watcher
 load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+APP_ROOT = os.path.dirname(BASE_DIR)
+DATA_DIR = os.path.join(APP_ROOT, "data")
+INSTALL_MARKER = os.path.join(DATA_DIR, "install_wizard_state.json")
+DB_FILE = os.path.join(DATA_DIR, "tuite_tg.db")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 BEIJING_TZ = timezone(timedelta(hours=8), "Asia/Shanghai")
 
@@ -133,6 +137,7 @@ templates.env.filters["beijing_time"] = lambda value: format_beijing_time(value)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    ensure_install_wizard_completed()
     init_db()
     ensure_defaults()
     watcher.start()
@@ -142,6 +147,23 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Tuite TG", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+
+
+def ensure_install_wizard_completed() -> None:
+    if os.path.exists(INSTALL_MARKER):
+        return
+    if os.path.exists(DB_FILE):
+        os.makedirs(DATA_DIR, exist_ok=True)
+        marker = {
+            "completed_at": utc_now().isoformat(),
+            "upgraded_without_marker": True,
+        }
+        with open(INSTALL_MARKER, "w", encoding="utf-8") as f:
+            json.dump(marker, f, ensure_ascii=False, indent=2)
+        return
+    raise RuntimeError(
+        "未检测到安装向导标记。请先运行 ./scripts/install.sh 完成初始化，再启动服务。"
+    )
 
 
 def ensure_defaults() -> None:

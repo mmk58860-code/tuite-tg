@@ -101,6 +101,17 @@ APPRISE_URLS=$(env_quote "$APPRISE_URLS")
 EOF
 }
 
+write_install_marker() {
+  mkdir -p data
+  cat > "data/install_wizard_state.json" <<EOF
+{
+  "completed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "web_port": "$WEB_PORT",
+  "web_username": "$WEB_USERNAME"
+}
+EOF
+}
+
 say "========================================"
 say " Tuite TG Ubuntu 安装向导"
 say "========================================"
@@ -142,9 +153,10 @@ TELEGRAM_CHAT_ID=""
 APPRISE_URLS=""
 
 write_env ".env"
+write_install_marker
 
 say ""
-say "配置已写入 .env。"
+say "配置已写入 .env，并生成安装完成标记。"
 say "正在构建并启动服务..."
 docker compose up -d --build
 

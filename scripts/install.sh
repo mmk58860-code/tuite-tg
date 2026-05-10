@@ -146,10 +146,8 @@ sync_admin_credentials() {
     return 1
   fi
   docker compose run --rm --no-deps \
-    -e RESET_ADMIN_USERNAME="$username" \
-    -e RESET_ADMIN_PASSWORD="$password" \
     tuite-tg \
-    python -c 'import os; from app.auth import get_password_hash, verify_password; from app.database import init_db, session_scope, set_setting, get_setting; username=os.environ["RESET_ADMIN_USERNAME"]; password=os.environ["RESET_ADMIN_PASSWORD"]; init_db(); ctx=session_scope(); db=ctx.__enter__(); set_setting(db, "admin_username", username); set_setting(db, "admin_password_hash", get_password_hash(password)); stored=get_setting(db, "admin_username", ""); stored_hash=get_setting(db, "admin_password_hash", ""); ok=stored == username and verify_password(password, stored_hash); ctx.__exit__(None, None, None); print(f"数据库中的后台账号已写入：{stored}"); print(f"后台密码校验：{ok}"); raise SystemExit(0 if ok else 1)'
+    python -c 'import os; from app.auth import get_password_hash, verify_password; from app.database import init_db, session_scope, set_setting, get_setting; username=os.environ.get("WEB_USERNAME", ""); password=os.environ.get("WEB_PASSWORD", ""); init_db(); ctx=session_scope(); db=ctx.__enter__(); set_setting(db, "admin_username", username); set_setting(db, "admin_password_hash", get_password_hash(password)); stored=get_setting(db, "admin_username", ""); stored_hash=get_setting(db, "admin_password_hash", ""); ok=bool(username) and bool(password) and stored == username and verify_password(password, stored_hash); ctx.__exit__(None, None, None); print(f"容器读取 WEB_USERNAME：{username}"); print(f"数据库中的后台账号已写入：{stored}"); print(f"后台密码校验：{ok}"); raise SystemExit(0 if ok else 1)'
 }
 
 wait_for_http() {

@@ -180,13 +180,19 @@ class Watcher:
             original_title = "" if forward_mode == "translated_only" and translated_title else title
             message = format_feed_item(
                 original_title,
-                link,
                 watch_list["name"] or watch_list["list_id"],
                 author_label,
                 translated_title,
             )
             try:
-                await send_telegram_with_retry(bot_token, chat_id, message, f"推文 {item_id}")
+                await send_telegram_with_retry(
+                    bot_token,
+                    chat_id,
+                    message,
+                    f"推文 {item_id}",
+                    button_text="查看原文",
+                    button_url=link,
+                )
                 with session_scope() as db:
                     add_log(db, "INFO", f"TG 推送成功: {item_id}")
                 if apprise_urls:
@@ -291,11 +297,18 @@ async def notify_safely(bot_token: str, chat_id: str, message: str) -> None:
             add_log(db, "ERROR", f"TG 报警发送失败: {exc}")
 
 
-async def send_telegram_with_retry(bot_token: str, chat_id: str, message: str, label: str) -> None:
+async def send_telegram_with_retry(
+    bot_token: str,
+    chat_id: str,
+    message: str,
+    label: str,
+    button_text: str = "",
+    button_url: str = "",
+) -> None:
     last_error: Exception | None = None
     for attempt in range(1, 4):
         try:
-            await send_telegram(bot_token, chat_id, message)
+            await send_telegram(bot_token, chat_id, message, button_text=button_text, button_url=button_url)
             if attempt > 1:
                 with session_scope() as db:
                     add_log(db, "INFO", f"{label} 第 {attempt} 次重试发送成功")

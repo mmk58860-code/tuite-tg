@@ -11,19 +11,30 @@ class NotifyError(RuntimeError):
     pass
 
 
-async def send_telegram(bot_token: str, chat_id: str, text: str) -> None:
+async def send_telegram(
+    bot_token: str,
+    chat_id: str,
+    text: str,
+    button_text: str = "",
+    button_url: str = "",
+) -> None:
     if not bot_token or not chat_id:
         raise NotifyError("Telegram bot token 或 chat id 未配置")
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+    }
+    if button_text and button_url:
+        payload["reply_markup"] = {
+            "inline_keyboard": [[{"text": button_text, "url": button_url}]]
+        }
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
             url,
-            json={
-                "chat_id": chat_id,
-                "text": text,
-                "parse_mode": "HTML",
-                "disable_web_page_preview": False,
-            },
+            json=payload,
         )
     if resp.status_code >= 400:
         raise NotifyError(f"Telegram 推送失败: {resp.status_code} {resp.text[:300]}")
@@ -48,7 +59,6 @@ def format_alert(title: str, body: str, detail: Optional[str] = None) -> str:
 
 def format_feed_item(
     title: str,
-    link: str,
     source: str = "",
     author_label: str = "",
     translated_title: str = "",
@@ -56,7 +66,6 @@ def format_feed_item(
     heading = "X List 更新"
     if source:
         heading += f" - {source}"
-    safe_link = html.escape(link)
     author_line = f"{html.escape(author_label)}\n" if author_label else ""
     body = (
         f"<b>{html.escape(heading)}</b>\n"
@@ -65,5 +74,4 @@ def format_feed_item(
     )
     if translated_title:
         body += f"\n\n<b>中文翻译</b>\n{html.escape(translated_title)}"
-    body += f"\n\n<a href=\"{safe_link}\">打开原文</a>"
     return body

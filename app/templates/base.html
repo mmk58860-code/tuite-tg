@@ -203,11 +203,34 @@
         });
       }
 
-      const logsPanel = document.querySelector(".logs[data-latest-log-id]");
+      let logsPanel = document.querySelector(".logs[data-latest-log-id]");
       let latestLogId = Number(logsPanel?.dataset.latestLogId || 0);
 
+      async function refreshActivePanels() {
+        const response = await fetch(window.location.pathname, {
+          headers: { "Accept": "text/html" },
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          return;
+        }
+        const html = await response.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
+        const activePanels = Array.from(document.querySelectorAll(".band.is-active"));
+        for (const panel of activePanels) {
+          const freshPanel = doc.getElementById(panel.id);
+          if (!freshPanel) {
+            continue;
+          }
+          panel.innerHTML = freshPanel.innerHTML;
+        }
+        logsPanel = document.querySelector(".logs[data-latest-log-id]");
+        latestLogId = Number(logsPanel?.dataset.latestLogId || latestLogId);
+      }
+
       async function watchLogs() {
-        const watchedPanels = new Set(["#dashboard", "#rsshub", "#logs", ""]);
+        const watchedPanels = new Set(["#dashboard", "#rsshub", "#logs", "#settings", ""]);
         if (!logsPanel || !watchedPanels.has(window.location.hash)) {
           return;
         }
@@ -222,7 +245,7 @@
           const payload = await response.json();
           const nextId = Number(payload.id || 0);
           if (nextId > latestLogId) {
-            window.location.reload();
+            await refreshActivePanels();
           }
         } catch (error) {
           console.debug("log refresh skipped", error);

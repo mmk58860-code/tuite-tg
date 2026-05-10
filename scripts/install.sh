@@ -57,6 +57,36 @@ ask_password() {
   done
 }
 
+read_web_username() {
+  while true; do
+    read -r -p "请输入后台登录账号 [admin]: " WEB_USERNAME
+    WEB_USERNAME="${WEB_USERNAME:-admin}"
+    if [[ -n "$WEB_USERNAME" ]]; then
+      return
+    fi
+    say_error "账号不能为空，请重新输入。"
+  done
+}
+
+read_web_password() {
+  local first second
+  while true; do
+    read -r -s -p "请输入后台登录密码: " first
+    printf '\n'
+    if [[ -z "$first" ]]; then
+      say_error "密码不能为空，请重新输入。"
+      continue
+    fi
+    read -r -s -p "请再次输入后台登录密码: " second
+    printf '\n'
+    if [[ "$first" == "$second" ]]; then
+      WEB_PASSWORD="$first"
+      return
+    fi
+    say_error "两次密码不一致，请重新输入。"
+  done
+}
+
 validate_port() {
   local port="$1"
   [[ "$port" =~ ^[0-9]+$ ]] && (( port >= 1 && port <= 65535 ))
@@ -115,6 +145,10 @@ EOF
 sync_admin_credentials() {
   local username="$1"
   local password="$2"
+  if [[ -z "$username" || -z "$password" ]]; then
+    say_error "后台账号或密码为空，不能写入数据库。"
+    return 1
+  fi
   docker compose run --rm --no-deps \
     -e RESET_ADMIN_USERNAME="$username" \
     -e RESET_ADMIN_PASSWORD="$password" \
@@ -186,8 +220,13 @@ while true; do
   say_error "端口号必须是 1-65535 之间的数字。"
 done
 
-WEB_USERNAME="$(ask_required "请输入后台登录账号" "admin")"
-WEB_PASSWORD="$(ask_password)"
+read_web_username
+read_web_password
+if [[ -z "$WEB_USERNAME" || -z "$WEB_PASSWORD" ]]; then
+  say_error "后台账号或密码为空，安装已停止。"
+  exit 1
+fi
+say "后台登录账号确认：$WEB_USERNAME"
 TUITE_TG_SECRET_KEY="$(generate_secret)"
 GLOBAL_POLL_SECONDS="5"
 FAILURE_COOLDOWN_MINUTES="10"

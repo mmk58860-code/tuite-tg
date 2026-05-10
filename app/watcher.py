@@ -24,7 +24,7 @@ from .database import (
     set_setting,
     utc_now,
 )
-from .notifier import format_alert, format_feed_item, send_apprise, send_telegram
+from .notifier import format_alert, format_feed_item, html_to_text, send_apprise, send_telegram
 from .openai_client import OpenAIConfigError, OpenAIRequestError, build_endpoint, translate_text
 
 
@@ -175,15 +175,12 @@ class Watcher:
                     continue
                 add_log(db, "INFO", f"发现新推文: {item_id}")
 
-            translated_title = await maybe_translate_title(title)
-            with session_scope() as db:
-                forward_mode = get_setting(db, "translate_forward_mode", "translated_only")
-            original_title = "" if forward_mode == "translated_only" and translated_title else title
+            translated_source = html_to_text(description) or title
+            translated_title = await maybe_translate_title(translated_source)
             message = format_feed_item(
-                original_title,
+                "",
                 watch_list["name"] or watch_list["list_id"],
                 author_label,
-                description,
                 translated_title,
             )
             try:

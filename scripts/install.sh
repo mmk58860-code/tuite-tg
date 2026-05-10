@@ -112,6 +112,16 @@ write_install_marker() {
 EOF
 }
 
+sync_admin_credentials() {
+  local username="$1"
+  local password="$2"
+  docker compose run --rm --no-deps \
+    -e RESET_ADMIN_USERNAME="$username" \
+    -e RESET_ADMIN_PASSWORD="$password" \
+    tuite-tg \
+    python -c 'import os; from app.auth import get_password_hash; from app.database import init_db, session_scope, set_setting, get_setting; username=os.environ["RESET_ADMIN_USERNAME"]; password=os.environ["RESET_ADMIN_PASSWORD"]; init_db(); ctx=session_scope(); db=ctx.__enter__(); set_setting(db, "admin_username", username); set_setting(db, "admin_password_hash", get_password_hash(password)); stored=get_setting(db, "admin_username", ""); ctx.__exit__(None, None, None); print(f"数据库中的后台账号已写入：{stored}")'
+}
+
 say "========================================"
 say " Tuite TG Ubuntu 安装向导"
 say "========================================"
@@ -157,8 +167,12 @@ write_install_marker
 
 say ""
 say "配置已写入 .env，并生成安装完成标记。"
-say "正在构建并启动服务..."
-docker compose up -d --build
+say "正在构建镜像..."
+docker compose build
+say "正在写入并确认后台账号密码..."
+sync_admin_credentials "$WEB_USERNAME" "$WEB_PASSWORD"
+say "正在启动服务..."
+docker compose up -d
 
 say ""
 say "安装完成。"

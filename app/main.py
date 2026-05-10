@@ -9,6 +9,9 @@ from urllib.parse import urljoin
 import feedparser
 import httpx
 from dotenv import load_dotenv
+
+load_dotenv()
+
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.security import OAuth2PasswordRequestForm
@@ -47,9 +50,6 @@ from .docker_manager import (
 from .notifier import format_alert, send_telegram
 from .openai_client import OpenAIConfigError, OpenAIRequestError, build_endpoint, query_recent_costs, translate_text
 from .watcher import translate_via_failover, watcher
-
-
-load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 APP_ROOT = os.path.dirname(BASE_DIR)

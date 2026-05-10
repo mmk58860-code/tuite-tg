@@ -177,6 +177,7 @@ class Watcher:
 
             outer_text, quote_text = split_rsshub_description(description)
             retweet_source, outer_text = extract_retweet_source(outer_text)
+            quote_source, quote_text = extract_quote_source(quote_text)
             is_retweet = bool(retweet_source) or is_retweet_text(outer_text or title)
             translated_outer = await maybe_translate_title(outer_text or title)
             translated_quote = await maybe_translate_title(quote_text) if quote_text else ""
@@ -186,6 +187,7 @@ class Watcher:
                 translated_quote=translated_quote,
                 is_retweet=is_retweet,
                 retweet_source=retweet_source,
+                quote_source=quote_source,
             )
             try:
                 await send_telegram_with_retry(
@@ -427,6 +429,17 @@ def extract_retweet_source(value: str) -> tuple[str, str]:
     if not match:
         return "", value
     return match.group(1), match.group(2).strip()
+
+
+def extract_quote_source(value: str) -> tuple[str, str]:
+    text = value.strip()
+    if not text:
+        return "", ""
+    match = re.match(r"(?is)^([^:\n：]{1,60})[:：][\s\u2002]*(.*)$", text)
+    if not match:
+        return "", value
+    source = re.sub(r"\s+", " ", match.group(1)).strip().lstrip("@")
+    return source, match.group(2).strip()
 
 
 def read_int_setting(key: str, default: int) -> int:

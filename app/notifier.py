@@ -99,6 +99,7 @@ def format_feed_item(
     translated_quote: str = "",
     is_retweet: bool = False,
     retweet_source: str = "",
+    quote_source: str = "",
 ) -> str:
     parts = []
     if author_label:
@@ -114,6 +115,7 @@ def format_feed_item(
     if translated_quote:
         if parts:
             parts.append("")
-        parts.append(f"<b>引用</b>\n{html.escape(clip_text(translated_quote))}")
+        heading = f"引用自@{quote_source}" if quote_source else "引用"
+        parts.append(f"<b>{html.escape(heading)}</b>\n{html.escape(clip_text(translated_quote))}")
     body = "\n".join(parts)
     return body

@@ -122,6 +122,39 @@ sync_admin_credentials() {
     python -c 'import os; from app.auth import get_password_hash, verify_password; from app.database import init_db, session_scope, set_setting, get_setting; username=os.environ["RESET_ADMIN_USERNAME"]; password=os.environ["RESET_ADMIN_PASSWORD"]; init_db(); ctx=session_scope(); db=ctx.__enter__(); set_setting(db, "admin_username", username); set_setting(db, "admin_password_hash", get_password_hash(password)); stored=get_setting(db, "admin_username", ""); stored_hash=get_setting(db, "admin_password_hash", ""); ok=stored == username and verify_password(password, stored_hash); ctx.__exit__(None, None, None); print(f"数据库中的后台账号已写入：{stored}"); print(f"后台密码校验：{ok}"); raise SystemExit(0 if ok else 1)'
 }
 
+wait_for_http() {
+  local url="$1"
+  local attempt
+  for attempt in $(seq 1 30); do
+    if curl -fsS "$url" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  say_error "服务启动后没有通过健康检查：$url"
+  return 1
+}
+
+verify_http_login() {
+  local username="$1"
+  local password="$2"
+  local url="http://127.0.0.1:$WEB_PORT/api/token"
+  local status
+  status="$(
+    curl -sS -o /tmp/tuite_tg_login_check.json -w "%{http_code}" \
+      -X POST \
+      --data-urlencode "username=$username" \
+      --data-urlencode "password=$password" \
+      "$url"
+  )"
+  if [[ "$status" != "200" ]]; then
+    say_error "HTTP 登录自检失败，状态码：$status"
+    say_error "接口返回：$(cat /tmp/tuite_tg_login_check.json 2>/dev/null || true)"
+    return 1
+  fi
+  say "HTTP 登录自检：True"
+}
+
 say "========================================"
 say " Tuite TG Ubuntu 安装向导"
 say "========================================"
@@ -175,6 +208,10 @@ say "正在写入并确认后台账号密码..."
 sync_admin_credentials "$WEB_USERNAME" "$WEB_PASSWORD"
 say "正在启动服务..."
 docker compose up -d
+say "正在等待服务健康检查..."
+wait_for_http "http://127.0.0.1:$WEB_PORT/health"
+say "正在验证 HTTP 登录接口..."
+verify_http_login "$WEB_USERNAME" "$WEB_PASSWORD"
 
 say ""
 say "安装完成。"

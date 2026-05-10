@@ -24,7 +24,7 @@ from .database import (
     set_setting,
     utc_now,
 )
-from .notifier import format_alert, format_feed_item, html_to_text, send_apprise, send_telegram
+from .notifier import format_alert, format_feed_item, send_apprise, send_telegram, split_rsshub_description
 from .openai_client import OpenAIConfigError, OpenAIRequestError, build_endpoint, translate_text
 
 
@@ -175,13 +175,13 @@ class Watcher:
                     continue
                 add_log(db, "INFO", f"发现新推文: {item_id}")
 
-            translated_source = html_to_text(description) or title
-            translated_title = await maybe_translate_title(translated_source)
+            outer_text, quote_text = split_rsshub_description(description)
+            translated_outer = await maybe_translate_title(outer_text or title)
+            translated_quote = await maybe_translate_title(quote_text) if quote_text else ""
             message = format_feed_item(
-                "",
-                watch_list["name"] or watch_list["list_id"],
                 author_label,
-                translated_title,
+                translated_outer,
+                translated_quote=translated_quote,
             )
             try:
                 await send_telegram_with_retry(

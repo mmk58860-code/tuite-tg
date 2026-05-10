@@ -25,22 +25,26 @@ def html_to_text(value: str) -> str:
     return text.strip()
 
 
+def split_rsshub_description(value: str) -> tuple[str, str]:
+    if not value:
+        return "", ""
+    text = html.unescape(value)
+    quote_pattern = re.compile(
+        r'(?is)(?:<hr[^>]*>\s*)?<div[^>]*class=["\'][^"\']*rsshub-quote[^"\']*["\'][^>]*>(.*?)</div>\s*'
+    )
+    match = quote_pattern.search(text)
+    if not match:
+        return html_to_text(text), ""
+    quote_html = match.group(1)
+    outer_html = quote_pattern.sub("\n", text, count=1)
+    return html_to_text(outer_html), html_to_text(quote_html)
+
+
 def clip_text(value: str, limit: int = 2800) -> str:
     value = value.strip()
     if len(value) <= limit:
         return value
     return value[: limit - 1].rstrip() + "…"
-
-
-def extract_media_urls(value: str) -> list[str]:
-    if not value:
-        return []
-    urls: list[str] = []
-    for match in re.finditer(r"""(?i)\b(?:src|href|poster)=["']([^"']+)["']""", value):
-        url = html.unescape(match.group(1)).strip()
-        if url and url not in urls:
-            urls.append(url)
-    return urls
 
 
 async def send_telegram(
@@ -90,30 +94,22 @@ def format_alert(title: str, body: str, detail: Optional[str] = None) -> str:
 
 
 def format_feed_item(
-    title: str,
-    source: str = "",
     author_label: str = "",
-    body_text: str = "",
-    translated_title: str = "",
+    outer_text: str = "",
+    quote_text: str = "",
+    translated_outer: str = "",
+    translated_quote: str = "",
 ) -> str:
     parts = []
     if author_label:
         parts.append(html.escape(author_label))
-    if title:
-        parts.append(html.escape(title))
-    cleaned_body = html_to_text(body_text)
-    if cleaned_body:
-        parts.append(html.escape(clip_text(cleaned_body)))
-    media_urls = extract_media_urls(body_text)
-    if media_urls:
+    if translated_outer:
         if parts:
             parts.append("")
-        parts.append("<b>媒体链接</b>")
-        for url in media_urls[:3]:
-            parts.append(html.escape(url))
+        parts.append(f"<b>外层正文</b>\n{html.escape(clip_text(translated_outer))}")
+    if translated_quote:
+        if parts:
+            parts.append("")
+        parts.append(f"<b>引用块</b>\n{html.escape(clip_text(translated_quote))}")
     body = "\n".join(parts)
-    if translated_title:
-        if body:
-            body += "\n\n"
-        body += f"<b>中文翻译</b>\n{html.escape(translated_title)}"
     return body

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import re
 from typing import Optional
 
 import apprise
@@ -9,6 +10,37 @@ import httpx
 
 class NotifyError(RuntimeError):
     pass
+
+
+def html_to_text(value: str) -> str:
+    if not value:
+        return ""
+    text = html.unescape(value)
+    text = re.sub(r"(?i)<\s*br\s*/?\s*>", "\n", text)
+    text = re.sub(r"(?i)</\s*(p|div|li|tr)\s*>", "\n", text)
+    text = re.sub(r"(?i)<\s*(p|div|li|tr|hr)\b[^>]*>", "\n", text)
+    text = re.sub(r"(?i)<\s*/?\s*video\b[^>]*>", "\n", text)
+    text = re.sub(r"(?i)<[^>]+>", "", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def clip_text(value: str, limit: int = 2800) -> str:
+    value = value.strip()
+    if len(value) <= limit:
+        return value
+    return value[: limit - 1].rstrip() + "…"
+
+
+def extract_media_urls(value: str) -> list[str]:
+    if not value:
+        return []
+    urls: list[str] = []
+    for match in re.finditer(r"""(?i)\b(?:src|href|poster)=["']([^"']+)["']""", value):
+        url = html.unescape(match.group(1)).strip()
+        if url and url not in urls:
+            urls.append(url)
+    return urls
 
 
 async def send_telegram(
@@ -61,6 +93,7 @@ def format_feed_item(
     title: str,
     source: str = "",
     author_label: str = "",
+    body_text: str = "",
     translated_title: str = "",
 ) -> str:
     parts = []
@@ -68,6 +101,16 @@ def format_feed_item(
         parts.append(html.escape(author_label))
     if title:
         parts.append(html.escape(title))
+    cleaned_body = html_to_text(body_text)
+    if cleaned_body:
+        parts.append(html.escape(clip_text(cleaned_body)))
+    media_urls = extract_media_urls(body_text)
+    if media_urls:
+        if parts:
+            parts.append("")
+        parts.append("<b>媒体链接</b>")
+        for url in media_urls[:3]:
+            parts.append(html.escape(url))
     body = "\n".join(parts)
     if translated_title:
         if body:

@@ -153,6 +153,7 @@ class Watcher:
             item_id = normalize_item_id(item)
             candidate_ids = candidate_item_ids(item)
             title = item.get("title", "")
+            description = item.get("description", "")
             link = item.get("link", "")
             username = normalize_username(str(item.get("username") or extract_username_from_item(item)))
             author_label = resolve_author_label(username)
@@ -182,6 +183,7 @@ class Watcher:
                 original_title,
                 watch_list["name"] or watch_list["list_id"],
                 author_label,
+                description,
                 translated_title,
             )
             try:
@@ -242,10 +244,23 @@ async def fetch_rss_items(token: dict, watch_list: dict) -> list[dict]:
         raise RuntimeError(f"RSS 解析失败: {parsed.bozo_exception}")
     entries = []
     for entry in parsed.entries:
+        description = (
+            entry.get("summary")
+            or entry.get("description")
+            or next(
+                (
+                    item.get("value", "")
+                    for item in entry.get("content", [])
+                    if isinstance(item, dict) and item.get("value")
+                ),
+                "",
+            )
+        )
         entries.append(
             {
                 "id": entry.get("id") or entry.get("guid") or entry.get("link"),
                 "title": entry.get("title", ""),
+                "description": description,
                 "link": entry.get("link", ""),
                 "username": extract_username_from_entry(entry),
             }

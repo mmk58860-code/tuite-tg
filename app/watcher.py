@@ -176,13 +176,16 @@ class Watcher:
                 add_log(db, "INFO", f"发现新推文: {item_id}")
 
             outer_text, quote_text = split_rsshub_description(description)
+            retweet_source, outer_text = extract_retweet_source(outer_text)
+            is_retweet = bool(retweet_source) or is_retweet_text(outer_text or title)
             translated_outer = await maybe_translate_title(outer_text or title)
             translated_quote = await maybe_translate_title(quote_text) if quote_text else ""
             message = format_feed_item(
                 author_label=author_label,
                 translated_outer=translated_outer,
                 translated_quote=translated_quote,
-                is_retweet=is_retweet_text(outer_text or title),
+                is_retweet=is_retweet,
+                retweet_source=retweet_source,
             )
             try:
                 await send_telegram_with_retry(
@@ -414,6 +417,16 @@ async def maybe_translate_title(text: str) -> str:
 
 def is_retweet_text(value: str) -> bool:
     return value.strip().lower().startswith(("rt ", "rt\u2002", "转发 "))
+
+
+def extract_retweet_source(value: str) -> tuple[str, str]:
+    text = value.strip()
+    match = re.match(r"(?is)^RT[\s\u2002]+@?([A-Za-z0-9_]{1,20})\s*\n+(.*)$", text)
+    if not match:
+        match = re.match(r"(?is)^RT[\s\u2002]+@?([A-Za-z0-9_]{1,20})\s+(.*)$", text)
+    if not match:
+        return "", value
+    return match.group(1), match.group(2).strip()
 
 
 def read_int_setting(key: str, default: int) -> int:

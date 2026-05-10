@@ -97,6 +97,7 @@ def format_feed_item(
     author_label: str = "",
     translated_outer: str = "",
     translated_quote: str = "",
+    is_retweet: bool = False,
 ) -> str:
     parts = []
     if author_label:
@@ -104,10 +105,13 @@ def format_feed_item(
     if translated_outer:
         if parts:
             parts.append("")
-        parts.append(f"<b>外层正文</b>\n{html.escape(clip_text(translated_outer))}")
+        if is_retweet:
+            parts.append(f"<b>转发</b>\n{html.escape(clip_text(translated_outer))}")
+        else:
+            parts.append(html.escape(clip_text(translated_outer)))
     if translated_quote:
         if parts:
             parts.append("")
-        parts.append(f"<b>引用块</b>\n{html.escape(clip_text(translated_quote))}")
+        parts.append(f"<b>引用</b>\n{html.escape(clip_text(translated_quote))}")
     body = "\n".join(parts)
     return body

@@ -182,6 +182,7 @@ class Watcher:
                 author_label=author_label,
                 translated_outer=translated_outer,
                 translated_quote=translated_quote,
+                is_retweet=is_retweet_text(outer_text or title),
             )
             try:
                 await send_telegram_with_retry(
@@ -409,6 +410,10 @@ async def translate_via_failover(text: str, prefer_active: bool = False) -> tupl
 async def maybe_translate_title(text: str) -> str:
     translated, _ = await translate_via_failover(text)
     return translated
+
+
+def is_retweet_text(value: str) -> bool:
+    return value.strip().lower().startswith(("rt ", "rt\u2002", "转发 "))
 
 
 def read_int_setting(key: str, default: int) -> int:
